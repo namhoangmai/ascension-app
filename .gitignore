@@ -1,0 +1,13 @@
+.env
+.env*.local
+.next
+.vercel
+.dist
+coverage
+node_modules
+dist
+build
+*.tsbuildinfo
+public/sw.js
+public/workbox-*.js
+public/worker-*.js
