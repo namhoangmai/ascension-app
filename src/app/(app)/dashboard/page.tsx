@@ -9,7 +9,7 @@ export default function DashboardPage() {
       <SectionHeading
         eyebrow="Foundation"
         title="Built for fast gym logging"
-        description="Phase 1 establishes the architecture, data model, and production infrastructure for the Ascension fitness platform."
+        description="Ascension fitness platform."
       />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <FeatureCard
@@ -21,6 +21,7 @@ export default function DashboardPage() {
           icon={Utensils}
           title="Macros"
           description="Food, logs, saved meals, and nutrition goals are normalized around accurate gram-based tracking."
+          href="/nutrition"
         />
         <FeatureCard
           icon={Activity}
