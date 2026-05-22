@@ -1,0 +1,9 @@
+{
+  "date": "2026-05-21",
+  "fontStack": "Geist Sans and Geist Mono loaded with next/font in src/app/layout.tsx; Tailwind fontFamily.sans references --font-geist-sans",
+  "palette": "Dark shadcn HSL tokens in src/styles/globals.css with lime primary and blue accent",
+  "motion": "No framer-motion, motion, gsap, lenis, lottie-react, react-spring, or auto-animate dependency detected",
+  "spacing": "Tailwind default spacing with container padding and radius token",
+  "framework": "Next.js 15 app router",
+  "preserve": ["dark background", "lime primary", "blue accent", "existing auth/dashboard routes"]
+}
