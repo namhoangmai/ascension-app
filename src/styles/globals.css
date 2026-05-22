@@ -64,17 +64,43 @@
 
 @layer components {
   .landing-page {
+    position: relative;
     min-height: 100svh;
     overflow-x: clip;
-    background:
-      radial-gradient(
-        circle at 82% 8%,
-        color-mix(in oklch, var(--color-accent) 14%, transparent) 0 18rem,
-        transparent 31rem
-      ),
-      linear-gradient(180deg, var(--color-paper-2), var(--color-paper) 42rem);
+    isolation: isolate;
+    background: linear-gradient(180deg, var(--color-paper-2), var(--color-paper) 42rem);
     color: var(--color-ink);
     font-family: var(--font-body);
+  }
+
+  .landing-page::before {
+    position: absolute;
+    inset: -10% -6% auto auto;
+    z-index: -1;
+    width: min(48rem, 62vw);
+    height: min(48rem, 62vw);
+    border-radius: 999px;
+    background: radial-gradient(
+      circle,
+      color-mix(in oklch, var(--color-accent) 18%, transparent) 0 34%,
+      color-mix(in oklch, var(--color-accent) 10%, transparent) 34% 58%,
+      transparent 76%
+    );
+    filter: blur(22px);
+    opacity: 0.9;
+    content: "";
+    pointer-events: none;
+    animation: landing-glow-drift 10s ease-in-out infinite alternate;
+  }
+
+  @keyframes landing-glow-drift {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+
+    to {
+      transform: translate3d(-7rem, 4.5rem, 0) scale(1.1);
+    }
   }
 
   .landing-nav {
@@ -715,6 +741,10 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .landing-page::before {
+      animation: none;
+    }
+
     .landing-page *,
     .landing-page *::before,
     .landing-page *::after {
