@@ -11,3 +11,6 @@ build
 public/sw.js
 public/workbox-*.js
 public/worker-*.js
+
+# Ignore local agent files and caches
+.agents/
