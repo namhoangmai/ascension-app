@@ -24,6 +24,7 @@ export interface AuthActionState {
 
 const genericSignInError = "Invalid email or password.";
 const genericResetMessage = "If that email exists, a reset link will be sent.";
+const genericSignUpError = "Unable to create an account right now. Try again in a moment.";
 
 function formValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -69,7 +70,8 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 
   if (
     user.passwordUpdatedAt &&
-    (!sessionPasswordUpdatedAt || user.passwordUpdatedAt > sessionPasswordUpdatedAt)
+    sessionPasswordUpdatedAt &&
+    user.passwordUpdatedAt > sessionPasswordUpdatedAt
   ) {
     return null;
   }
@@ -153,45 +155,65 @@ export async function signUpWithPassword(
   const rateLimitKey = getRateLimitKey("signup", parsed.data.email);
   assertRateLimit({ key: rateLimitKey, limit: 3, windowMs: 60 * 60 * 1000 });
 
-  const existingUser = await prisma.user.findUnique({
-    where: { email: parsed.data.email },
-    select: { id: true }
-  });
+  try {
+    const existingUser = await prisma.user.findUnique({
+      where: { email: parsed.data.email },
+      select: { id: true }
+    });
 
-  if (existingUser) {
-    return {
-      status: "error",
-      message: "Unable to create an account with those details."
-    };
-  }
+    if (existingUser) {
+      return {
+        status: "error",
+        message: "Unable to create an account with those details."
+      };
+    }
 
-  const passwordHash = await hash(parsed.data.password, {
-    type: 2,
-    memoryCost: 19456,
-    timeCost: 2,
-    parallelism: 1
-  });
+    const passwordHash = await hash(parsed.data.password, {
+      type: 2,
+      memoryCost: 19456,
+      timeCost: 2,
+      parallelism: 1
+    });
 
-  await prisma.user.create({
-    data: {
-      name: parsed.data.name,
+    await prisma.user.create({
+      data: {
+        name: parsed.data.name,
+        email: parsed.data.email,
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        preferences: {
+          create: {}
+        }
+      }
+    });
+
+    await signIn("credentials", {
       email: parsed.data.email,
-      passwordHash,
-      passwordUpdatedAt: new Date(),
-      preferences: {
-        create: {}
+      password: parsed.data.password,
+      remember: parsed.data.remember ? "true" : "false",
+      redirectTo: "/dashboard"
+    });
+
+    return { status: "success" };
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
+      if (error.code === "P2002") {
+        return {
+          status: "error",
+          message: "Unable to create an account with those details."
+        };
+      }
+
+      if (error.code === "P1001" || error.code === "P2021" || error.code === "P2022") {
+        return {
+          status: "error",
+          message: genericSignUpError
+        };
       }
     }
-  });
 
-  await signIn("credentials", {
-    email: parsed.data.email,
-    password: parsed.data.password,
-    remember: parsed.data.remember ? "true" : "false",
-    redirectTo: "/dashboard"
-  });
-
-  return { status: "success" };
+    throw error;
+  }
 }
 
 export async function signInWithGoogle() {

@@ -33,20 +33,25 @@ export const authConfig = {
   },
   trustHost: true,
   callbacks: {
-    async jwt({ token }) {
+    async jwt({ token, user }) {
+      const maybeUser = user as { passwordUpdatedAt?: unknown } | undefined;
+
+      if (maybeUser && "passwordUpdatedAt" in maybeUser) {
+        token.passwordUpdatedAt =
+          typeof maybeUser.passwordUpdatedAt === "string" ? maybeUser.passwordUpdatedAt : null;
+      }
+
       if (token.sub) {
         const user = await prisma.user.findUnique({
           where: { id: token.sub },
           select: {
-            email: true,
-            passwordUpdatedAt: true
+            email: true
           }
         });
 
         if (user?.email) {
           token.email = user.email;
         }
-        token.passwordUpdatedAt = user?.passwordUpdatedAt?.toISOString() ?? null;
       }
 
       return token;

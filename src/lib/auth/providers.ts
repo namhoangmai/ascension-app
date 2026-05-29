@@ -38,7 +38,8 @@ export function getAuthProviders() {
             name: true,
             email: true,
             image: true,
-            passwordHash: true
+            passwordHash: true,
+            passwordUpdatedAt: true
           }
         });
 
@@ -58,7 +59,8 @@ export function getAuthProviders() {
           id: user.id,
           name: user.name,
           email: user.email,
-          image: user.image
+          image: user.image,
+          passwordUpdatedAt: user.passwordUpdatedAt?.toISOString() ?? null
         };
       }
     })
