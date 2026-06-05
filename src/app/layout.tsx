@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 
+import { ServiceWorkerGuard } from "@/components/shared/service-worker-guard";
 import "@/styles/globals.css";
 
 const geistSans = Geist({
@@ -45,7 +46,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark`}>
-      <body>{children}</body>
+      <body suppressHydrationWarning>
+        <ServiceWorkerGuard />
+        {children}
+      </body>
     </html>
   );
 }

@@ -1,6 +1,6 @@
 import withPWA from "next-pwa";
 
-const isDev = process.env.NODE_ENV === "development";
+const isProduction = process.env.NODE_ENV === "production";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -20,7 +20,8 @@ const nextConfig = {
 
 export default withPWA({
   dest: "public",
-  disable: isDev,
+  sw: "sw-production.js",
+  disable: !isProduction,
   register: true,
   skipWaiting: true
 })(nextConfig);

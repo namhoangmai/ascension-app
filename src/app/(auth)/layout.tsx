@@ -1,11 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { requireAnonymous } from "@/lib/auth/server";
-
-export default async function AuthLayout({ children }: { children: ReactNode }) {
-  await requireAnonymous();
-
+export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(156,238,58,0.12),transparent_32%),linear-gradient(180deg,#111,#050505_60%)] px-4 py-6 text-foreground">
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col">

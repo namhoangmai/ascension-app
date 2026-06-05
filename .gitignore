@@ -8,7 +8,7 @@ node_modules
 dist
 build
 *.tsbuildinfo
-public/sw.js
+public/sw-production.js
 public/workbox-*.js
 public/worker-*.js
 

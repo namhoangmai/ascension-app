@@ -1,5 +1,6 @@
 import { hash, verify } from "argon2";
 import { AuthError } from "next-auth";
+import type { Session } from "next-auth";
 import { redirect } from "next/navigation";
 import { randomBytes, createHash } from "node:crypto";
 
@@ -47,32 +48,15 @@ function validationError(
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
-  const session = await auth();
+  let session: Session | null;
+
+  try {
+    session = await auth();
+  } catch {
+    return null;
+  }
 
   if (!session?.user.id) {
-    return null;
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      passwordUpdatedAt: true
-    }
-  });
-
-  if (!user) {
-    return null;
-  }
-
-  const sessionPasswordUpdatedAt = session.user.passwordUpdatedAt
-    ? new Date(session.user.passwordUpdatedAt)
-    : null;
-
-  if (
-    user.passwordUpdatedAt &&
-    sessionPasswordUpdatedAt &&
-    user.passwordUpdatedAt > sessionPasswordUpdatedAt
-  ) {
     return null;
   }
 
