@@ -32,7 +32,7 @@ export function AppShell({ children }: AppShellProps) {
         </header>
         <main className="safe-page flex-1 px-4 py-5 sm:px-6 lg:px-8">{children}</main>
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-background/90 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur-xl md:hidden">
-          <div className="mx-auto grid max-w-md grid-cols-6">
+          <div className="mx-auto grid max-w-md grid-cols-7">
             {primaryNavigation.map((item) => (
               <Link
                 key={item.href}

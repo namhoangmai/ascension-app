@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Dumbbell, Scale, Settings, Utensils } from "lucide-react";
+import { Activity, BarChart3, Bot, Dumbbell, Scale, Settings, Utensils } from "lucide-react";
 
 export const primaryNavigation = [
   {
@@ -7,14 +7,19 @@ export const primaryNavigation = [
     icon: Activity
   },
   {
-    label: "Workouts",
-    href: "/workouts",
+    label: "Strength",
+    href: "/strength",
     icon: Dumbbell
   },
   {
     label: "Nutrition",
     href: "/nutrition",
     icon: Utensils
+  },
+  {
+    label: "AI Coach",
+    href: "/ai-coach",
+    icon: Bot
   },
   {
     label: "Body",

@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { signInWithGoogleAction } from "@/lib/auth/actions";
 
 export function GoogleButton() {
-  const isConfigured = Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET);
+  const isConfigured = Boolean(
+    (process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID) &&
+    (process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET)
+  );
 
   return (
     <form action={signInWithGoogleAction}>

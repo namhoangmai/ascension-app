@@ -16,6 +16,7 @@ export default function DashboardPage() {
           icon={Dumbbell}
           title="Strength tracking"
           description="Program, workout day, exercise, session, and set models are ready for low-friction logging."
+          href="/strength"
         />
         <FeatureCard
           icon={Utensils}
@@ -27,11 +28,13 @@ export default function DashboardPage() {
           icon={Activity}
           title="Body progress"
           description="Weight, measurements, and private photo storage references are included in the schema."
+          href="/body"
         />
         <FeatureCard
           icon={Sparkles}
           title="AI-ready"
           description="The route plan leaves a clean boundary for meal suggestions once nutrition data exists."
+          href="/ai-coach"
         />
       </div>
     </div>

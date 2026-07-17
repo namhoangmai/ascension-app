@@ -9,6 +9,8 @@ import { assertRateLimit, clearRateLimit, getRateLimitKey } from "./rate-limit";
 import { signInSchema } from "./validation";
 
 export function getAuthProviders() {
+  const googleClientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
+  const googleClientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
   const providers: Provider[] = [
     Credentials({
       name: "Email and password",
@@ -66,12 +68,12 @@ export function getAuthProviders() {
     })
   ];
 
-  if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
+  if (googleClientId && googleClientSecret) {
     providers.push(
       Google({
-        clientId: process.env.AUTH_GOOGLE_ID,
-        clientSecret: process.env.AUTH_GOOGLE_SECRET,
-        allowDangerousEmailAccountLinking: false
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
+        allowDangerousEmailAccountLinking: true
       })
     );
   }
