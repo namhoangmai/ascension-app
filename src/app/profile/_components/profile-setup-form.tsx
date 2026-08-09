@@ -27,9 +27,26 @@ const initialState: ProfileActionState = { status: "idle" };
 
 const steps = ["Welcome", "About you", "Fitness goals", "Finish"] as const;
 
-const goalOptions = Object.entries(fitnessGoalLabels);
-const experienceOptions = Object.entries(trainingExperienceLabels);
-const styleOptions = Object.entries(trainingStyleLabels);
+const goalOptions = [
+  ["BUILD_MUSCLE", fitnessGoalLabels.BUILD_MUSCLE],
+  ["LOSE_FAT", fitnessGoalLabels.LOSE_FAT],
+  ["RECOMPOSITION", fitnessGoalLabels.RECOMPOSITION],
+  ["INCREASE_STRENGTH", fitnessGoalLabels.INCREASE_STRENGTH],
+  ["GENERAL_FITNESS", fitnessGoalLabels.GENERAL_FITNESS]
+] as const;
+const experienceOptions = [
+  ["BEGINNER", trainingExperienceLabels.BEGINNER],
+  ["INTERMEDIATE", trainingExperienceLabels.INTERMEDIATE],
+  ["ADVANCED", trainingExperienceLabels.ADVANCED]
+] as const;
+const styleOptions = [
+  ["STRENGTH", trainingStyleLabels.STRENGTH],
+  ["HYPERTROPHY", trainingStyleLabels.HYPERTROPHY],
+  ["BODYBUILDING", trainingStyleLabels.BODYBUILDING],
+  ["POWERLIFTING", trainingStyleLabels.POWERLIFTING],
+  ["FUNCTIONAL", trainingStyleLabels.FUNCTIONAL],
+  ["GENERAL", trainingStyleLabels.GENERAL]
+] as const;
 const genderOptions = Object.entries(genderLabels);
 const avatarOutputSize = 320;
 const maxAvatarFileSizeBytes = 5 * 1024 * 1024;
@@ -51,6 +68,23 @@ interface ProfileFormValues {
   targetWeightKg: string;
   bio: string;
 }
+
+const profileFormFieldNames = [
+  "firstName",
+  "lastName",
+  "username",
+  "dateOfBirth",
+  "gender",
+  "genderSelfDescribe",
+  "heightCm",
+  "weightKg",
+  "mainFitnessGoal",
+  "trainingExperience",
+  "trainingFrequency",
+  "preferredStyle",
+  "targetWeightKg",
+  "bio"
+] as const satisfies readonly (keyof ProfileFormValues)[];
 
 interface ImageSize {
   width: number;
@@ -448,6 +482,9 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
         name="profileImageDataUrl"
         value={avatarRemoved ? "__REMOVE__" : committedAvatarDataUrl}
       />
+      {profileFormFieldNames.map((name) => (
+        <input key={name} type="hidden" name={name} value={values[name]} />
+      ))}
 
       <div className="grid grid-cols-4 gap-2" aria-label="Profile setup progress">
         {steps.map((step, index) => (
@@ -676,7 +713,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                 name="gender"
                 value={values.gender}
                 error={fieldError(state.fieldErrors, "gender")}
-                options={[["", "Optional"], ...genderOptions]}
+                options={[["", "Optional"], ...genderOptions] as const}
                 onChange={setField}
               />
               {values.gender === "SELF_DESCRIBE" ? (
@@ -920,7 +957,7 @@ function SelectField({
   error,
   options,
   onChange
-}: FieldProps & { options: [string, string][] }) {
+}: FieldProps & { options: readonly (readonly [string, string])[] }) {
   return (
     <label className="block space-y-2 text-sm">
       <span className="font-medium text-foreground">{label}</span>
