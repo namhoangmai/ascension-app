@@ -1,7 +1,16 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { ArrowLeft, ArrowRight, Check, ImagePlus, Trash2 } from "lucide-react";
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type PointerEvent
+} from "react";
+import { ArrowLeft, ArrowRight, Check, ImagePlus, Move, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +33,7 @@ const styleOptions = Object.entries(trainingStyleLabels);
 const genderOptions = Object.entries(genderLabels);
 const avatarOutputSize = 320;
 const maxAvatarFileSizeBytes = 5 * 1024 * 1024;
+const cropDiameterRatio = 0.72;
 
 interface ProfileFormValues {
   firstName: string;
@@ -42,6 +52,16 @@ interface ProfileFormValues {
   bio: string;
 }
 
+interface ImageSize {
+  width: number;
+  height: number;
+}
+
+interface AvatarPosition {
+  x: number;
+  y: number;
+}
+
 function decimalValue(value: string | null | undefined) {
   return value ?? "";
 }
@@ -56,6 +76,19 @@ function dateValue(value: string | null | undefined) {
 
 function fieldError(errors: ProfileActionState["fieldErrors"], key: string) {
   return errors?.[key]?.[0];
+}
+
+function loadImage(sourceUrl: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      resolve(image);
+    };
+    image.onerror = () => {
+      reject(new Error("Image could not be loaded."));
+    };
+    image.src = sourceUrl;
+  });
 }
 
 export interface ProfileSetupData {
@@ -94,19 +127,24 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
   const [state, action] = useActionState(saveProfileAction, initialState);
   const [stepIndex, setStepIndex] = useState(0);
   const user = profile?.user ?? fallbackUser;
-  const [avatarDataUrl, setAvatarDataUrl] = useState(profile?.profileImageUrl ?? user.image ?? "");
-  const [croppedAvatarDataUrl, setCroppedAvatarDataUrl] = useState(
-    profile?.profileImageUrl ?? user.image ?? ""
-  );
+  const initialAvatarUrl = profile?.profileImageUrl ?? user.image ?? "";
+  const [committedAvatarDataUrl, setCommittedAvatarDataUrl] = useState(initialAvatarUrl);
+  const [draftAvatarDataUrl, setDraftAvatarDataUrl] = useState("");
+  const [draftPreviewDataUrl, setDraftPreviewDataUrl] = useState("");
+  const [draftImageSize, setDraftImageSize] = useState<ImageSize | null>(null);
+  const [editorSize, setEditorSize] = useState(0);
+  const [avatarPosition, setAvatarPosition] = useState<AvatarPosition>({ x: 0, y: 0 });
   const [avatarRemoved, setAvatarRemoved] = useState(false);
   const [avatarError, setAvatarError] = useState("");
-  const [avatarAdjust, setAvatarAdjust] = useState({
-    x: 50,
-    y: 50,
-    zoom: 1
-  });
-  const avatarObjectPosition = `${String(avatarAdjust.x)}% ${String(avatarAdjust.y)}%`;
-  const avatarTransform = `scale(${String(avatarAdjust.zoom)})`;
+  const [avatarZoom, setAvatarZoom] = useState(1);
+  const [isDraggingAvatar, setIsDraggingAvatar] = useState(false);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    position: AvatarPosition;
+  } | null>(null);
   const [values, setValues] = useState<ProfileFormValues>({
     firstName: profile?.firstName ?? user.name?.split(" ")[0] ?? "",
     lastName: profile?.lastName ?? user.name?.split(" ").slice(1).join(" ") ?? "",
@@ -145,25 +183,52 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
     setValues((current) => ({ ...current, [name]: value }));
   }
 
-  useEffect(() => {
-    if (!avatarDataUrl || avatarRemoved) {
-      setCroppedAvatarDataUrl("");
-      return;
-    }
-
-    if (!avatarDataUrl.startsWith("data:image/")) {
-      setCroppedAvatarDataUrl(avatarDataUrl);
-      return;
-    }
-
-    let isActive = true;
-    const image = new Image();
-
-    image.onload = () => {
-      if (!isActive) {
-        return;
+  const cropDiameter = editorSize * cropDiameterRatio;
+  const baseImageScale =
+    draftImageSize && cropDiameter > 0
+      ? Math.max(cropDiameter / draftImageSize.width, cropDiameter / draftImageSize.height)
+      : 1;
+  const imageScale = baseImageScale * avatarZoom;
+  const displayedImageSize = draftImageSize
+    ? {
+        width: draftImageSize.width * imageScale,
+        height: draftImageSize.height * imageScale
+      }
+    : { width: 0, height: 0 };
+  const constrainedAvatarPosition = useCallback(
+    (position: AvatarPosition) => {
+      if (!draftImageSize || editorSize <= 0 || cropDiameter <= 0) {
+        return { x: 0, y: 0 };
       }
 
+      const displayWidth = draftImageSize.width * imageScale;
+      const displayHeight = draftImageSize.height * imageScale;
+      const maxX = Math.max(0, (displayWidth - cropDiameter) / 2);
+      const maxY = Math.max(0, (displayHeight - cropDiameter) / 2);
+
+      return {
+        x: Math.min(maxX, Math.max(-maxX, position.x)),
+        y: Math.min(maxY, Math.max(-maxY, position.y))
+      };
+    },
+    [cropDiameter, draftImageSize, editorSize, imageScale]
+  );
+
+  const renderCircularCrop = useCallback(
+    async (sourceUrl: string, outputType: "image/png" | "image/webp" = "image/png") => {
+      if (!draftImageSize || editorSize <= 0 || cropDiameter <= 0) {
+        return sourceUrl;
+      }
+
+      const image = await loadImage(sourceUrl);
+      const constrainedPosition = constrainedAvatarPosition(avatarPosition);
+      const cropLeft = (editorSize - cropDiameter) / 2;
+      const cropTop = cropLeft;
+      const imageLeft = editorSize / 2 - displayedImageSize.width / 2 + constrainedPosition.x;
+      const imageTop = editorSize / 2 - displayedImageSize.height / 2 + constrainedPosition.y;
+      const sourceX = (cropLeft - imageLeft) / imageScale;
+      const sourceY = (cropTop - imageTop) / imageScale;
+      const sourceSize = cropDiameter / imageScale;
       const canvas = document.createElement("canvas");
       canvas.width = avatarOutputSize;
       canvas.height = avatarOutputSize;
@@ -171,40 +236,115 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
       const context = canvas.getContext("2d");
 
       if (!context) {
-        setCroppedAvatarDataUrl(avatarDataUrl);
-        return;
+        return sourceUrl;
       }
 
-      const visibleWidth =
-        image.naturalWidth / Math.max(avatarAdjust.zoom, 1) >
-        image.naturalHeight / Math.max(avatarAdjust.zoom, 1)
-          ? image.naturalHeight / Math.max(avatarAdjust.zoom, 1)
-          : image.naturalWidth / Math.max(avatarAdjust.zoom, 1);
-      const visibleHeight = visibleWidth;
-      const maxX = Math.max(0, image.naturalWidth - visibleWidth);
-      const maxY = Math.max(0, image.naturalHeight - visibleHeight);
-      const sourceX = maxX * (avatarAdjust.x / 100);
-      const sourceY = maxY * (avatarAdjust.y / 100);
-
+      context.clearRect(0, 0, avatarOutputSize, avatarOutputSize);
+      context.save();
+      context.beginPath();
+      context.arc(avatarOutputSize / 2, avatarOutputSize / 2, avatarOutputSize / 2, 0, Math.PI * 2);
+      context.clip();
       context.drawImage(
         image,
         sourceX,
         sourceY,
-        visibleWidth,
-        visibleHeight,
+        sourceSize,
+        sourceSize,
         0,
         0,
         avatarOutputSize,
         avatarOutputSize
       );
-      setCroppedAvatarDataUrl(canvas.toDataURL("image/webp", 0.9));
+      context.restore();
+
+      return canvas.toDataURL(outputType, 0.92);
+    },
+    [
+      avatarPosition,
+      constrainedAvatarPosition,
+      cropDiameter,
+      displayedImageSize.height,
+      displayedImageSize.width,
+      draftImageSize,
+      editorSize,
+      imageScale
+    ]
+  );
+
+  useEffect(() => {
+    const editor = editorRef.current;
+
+    if (!editor) {
+      return;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) {
+        setEditorSize(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(editor);
+
+    return () => {
+      observer.disconnect();
     };
-    image.src = avatarDataUrl;
+  }, [draftAvatarDataUrl]);
+
+  useEffect(() => {
+    if (!draftAvatarDataUrl) {
+      return;
+    }
+
+    let isActive = true;
+    loadImage(draftAvatarDataUrl)
+      .then((image) => {
+        if (!isActive) {
+          return;
+        }
+
+        setDraftImageSize({ width: image.naturalWidth, height: image.naturalHeight });
+        setAvatarPosition({ x: 0, y: 0 });
+        setAvatarZoom(1);
+      })
+      .catch(() => {
+        if (isActive) {
+          setAvatarError("Unable to load that image. Try a different file.");
+        }
+      });
 
     return () => {
       isActive = false;
     };
-  }, [avatarAdjust, avatarDataUrl, avatarRemoved]);
+  }, [draftAvatarDataUrl]);
+
+  useEffect(() => {
+    setAvatarPosition((current) => constrainedAvatarPosition(current));
+  }, [constrainedAvatarPosition]);
+
+  useEffect(() => {
+    if (!draftAvatarDataUrl || !draftImageSize || editorSize <= 0) {
+      setDraftPreviewDataUrl("");
+      return;
+    }
+
+    let isActive = true;
+    renderCircularCrop(draftAvatarDataUrl)
+      .then((dataUrl) => {
+        if (isActive) {
+          setDraftPreviewDataUrl(dataUrl);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setDraftPreviewDataUrl("");
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [draftAvatarDataUrl, draftImageSize, editorSize, renderCircularCrop]);
 
   function onAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -228,11 +368,77 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
     setAvatarError("");
     const reader = new FileReader();
     reader.onload = () => {
-      setAvatarDataUrl(typeof reader.result === "string" ? reader.result : "");
-      setAvatarRemoved(false);
-      setAvatarAdjust({ x: 50, y: 50, zoom: 1 });
+      setDraftAvatarDataUrl(typeof reader.result === "string" ? reader.result : "");
+      setDraftPreviewDataUrl("");
+      setDraftImageSize(null);
     };
     reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  function cancelAvatarEdit() {
+    setDraftAvatarDataUrl("");
+    setDraftPreviewDataUrl("");
+    setDraftImageSize(null);
+    setAvatarPosition({ x: 0, y: 0 });
+    setAvatarZoom(1);
+    setAvatarError("");
+  }
+
+  async function applyAvatarEdit() {
+    if (!draftAvatarDataUrl) {
+      return;
+    }
+
+    try {
+      const croppedDataUrl = await renderCircularCrop(draftAvatarDataUrl);
+      setCommittedAvatarDataUrl(croppedDataUrl);
+      setAvatarRemoved(false);
+      cancelAvatarEdit();
+    } catch {
+      setAvatarError("Unable to crop that image. Try a different file.");
+    }
+  }
+
+  function onAvatarPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!draftImageSize) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStartRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      position: avatarPosition
+    };
+    setIsDraggingAvatar(true);
+  }
+
+  function onAvatarPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const dragStart = dragStartRef.current;
+
+    if (dragStart?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    setAvatarPosition(
+      constrainedAvatarPosition({
+        x: dragStart.position.x + event.clientX - dragStart.clientX,
+        y: dragStart.position.y + event.clientY - dragStart.clientY
+      })
+    );
+  }
+
+  function onAvatarPointerEnd(event: PointerEvent<HTMLDivElement>) {
+    const dragStart = dragStartRef.current;
+
+    if (dragStart?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    dragStartRef.current = null;
+    setIsDraggingAvatar(false);
   }
 
   return (
@@ -240,7 +446,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
       <input
         type="hidden"
         name="profileImageDataUrl"
-        value={avatarRemoved ? "__REMOVE__" : croppedAvatarDataUrl}
+        value={avatarRemoved ? "__REMOVE__" : committedAvatarDataUrl}
       />
 
       <div className="grid grid-cols-4 gap-2" aria-label="Profile setup progress">
@@ -280,17 +486,9 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
               <div className="grid gap-3">
                 <div className="grid size-32 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-lg shadow-black/20">
-                  {avatarDataUrl && !avatarRemoved ? (
+                  {committedAvatarDataUrl && !avatarRemoved ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={avatarDataUrl}
-                      alt=""
-                      className="size-full object-cover"
-                      style={{
-                        objectPosition: avatarObjectPosition,
-                        transform: avatarTransform
-                      }}
-                    />
+                    <img src={committedAvatarDataUrl} alt="" className="size-full object-cover" />
                   ) : (
                     <ImagePlus className="size-8 text-muted-foreground" aria-hidden="true" />
                   )}
@@ -313,8 +511,8 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                     type="button"
                     variant="ghost"
                     onClick={() => {
-                      setAvatarDataUrl("");
-                      setCroppedAvatarDataUrl("");
+                      cancelAvatarEdit();
+                      setCommittedAvatarDataUrl("");
                       setAvatarRemoved(true);
                       setAvatarError("");
                     }}
@@ -323,39 +521,105 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                     Remove
                   </Button>
                 </div>
-                {avatarDataUrl && !avatarRemoved ? (
-                  <div className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-4">
-                    <p className="text-sm font-medium text-foreground">Adjust round frame</p>
+                {draftAvatarDataUrl ? (
+                  <div className="grid gap-4 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Adjust round frame</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Drag the image, then apply the crop when it looks right.
+                        </p>
+                      </div>
+                      <Move
+                        className={cn(
+                          "size-5 text-muted-foreground transition-colors",
+                          isDraggingAvatar ? "text-primary" : null
+                        )}
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                      <div
+                        ref={editorRef}
+                        className={cn(
+                          "relative aspect-square w-full max-w-sm touch-none select-none overflow-hidden rounded-lg border border-white/10 bg-black/40",
+                          isDraggingAvatar ? "cursor-grabbing" : "cursor-grab"
+                        )}
+                        onPointerDown={onAvatarPointerDown}
+                        onPointerMove={onAvatarPointerMove}
+                        onPointerUp={onAvatarPointerEnd}
+                        onPointerCancel={onAvatarPointerEnd}
+                      >
+                        {draftImageSize ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={draftAvatarDataUrl}
+                            alt=""
+                            draggable={false}
+                            className="pointer-events-none absolute left-1/2 top-1/2 max-w-none select-none"
+                            style={{
+                              width: `${String(displayedImageSize.width)}px`,
+                              height: `${String(displayedImageSize.height)}px`,
+                              transform: `translate(calc(-50% + ${String(avatarPosition.x)}px), calc(-50% + ${String(avatarPosition.y)}px))`
+                            }}
+                          />
+                        ) : null}
+                        <div
+                          className="pointer-events-none absolute inset-0"
+                          style={{
+                            background: `radial-gradient(circle at center, transparent 0 ${String(
+                              cropDiameter / 2
+                            )}px, rgba(0,0,0,0.62) ${String(cropDiameter / 2 + 1)}px 100%)`
+                          }}
+                        />
+                        <div
+                          className="pointer-events-none absolute left-1/2 top-1/2 rounded-full border-2 border-primary shadow-[0_0_0_1px_rgba(255,255,255,0.24),0_0_28px_rgba(156,238,58,0.20)]"
+                          style={{
+                            width: `${String(cropDiameter)}px`,
+                            height: `${String(cropDiameter)}px`,
+                            transform: "translate(-50%, -50%)"
+                          }}
+                        />
+                      </div>
+                      <div className="grid justify-items-start gap-2 lg:justify-items-center">
+                        <div className="grid size-20 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-lg shadow-black/20">
+                          {draftPreviewDataUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={draftPreviewDataUrl}
+                              alt=""
+                              className="size-full object-cover"
+                            />
+                          ) : (
+                            <ImagePlus
+                              className="size-6 text-muted-foreground"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Final preview</p>
+                      </div>
+                    </div>
                     <RangeField
                       label="Zoom"
                       min={1}
                       max={2.4}
                       step={0.05}
-                      value={avatarAdjust.zoom}
+                      value={avatarZoom}
                       onChange={(value) => {
-                        setAvatarAdjust((current) => ({ ...current, zoom: value }));
+                        setAvatarZoom(value);
                       }}
                     />
-                    <RangeField
-                      label="Horizontal"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={avatarAdjust.x}
-                      onChange={(value) => {
-                        setAvatarAdjust((current) => ({ ...current, x: value }));
-                      }}
-                    />
-                    <RangeField
-                      label="Vertical"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={avatarAdjust.y}
-                      onChange={(value) => {
-                        setAvatarAdjust((current) => ({ ...current, y: value }));
-                      }}
-                    />
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={cancelAvatarEdit}>
+                        <X className="size-4" aria-hidden="true" />
+                        Cancel
+                      </Button>
+                      <Button type="button" onClick={applyAvatarEdit}>
+                        <Check className="size-4" aria-hidden="true" />
+                        Apply
+                      </Button>
+                    </div>
                   </div>
                 ) : null}
                 {avatarError ? <p className="text-xs text-destructive">{avatarError}</p> : null}

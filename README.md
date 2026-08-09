@@ -35,3 +35,10 @@ npm run db:migrate
 ```bash
 npm run dev
 ```
+
+## Format check for CI/CD
+1. ```npm run format:check```
+2. ```npx prettier --write address```
+
+## Build
+1. ```npm run build```
