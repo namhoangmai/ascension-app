@@ -197,8 +197,7 @@ export function StrengthTrackingClient() {
           <p className="text-sm font-medium text-primary">Training</p>
           <h1 className="text-3xl font-semibold tracking-normal">Strength Tracking</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Log sessions, reuse templates, compare against your last lift, and follow exercise PRs
-            over time.
+            Log sessions
           </p>
         </div>
         <div className="flex rounded-md border border-white/10 bg-white/[0.04] p-1">

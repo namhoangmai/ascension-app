@@ -14,7 +14,16 @@ export default async function HomePage() {
       primaryLabel={session ? "Open dashboard" : "Start tracking"}
       secondaryHref={secondaryHref}
       secondaryLabel={session ? "Review today" : "Sign in"}
-      navActionLabel={session ? "Dashboard" : "Sign in"}
+      navActionLabel={session ? "Dashboard" : "Sign up"}
+      navProfile={
+        session
+          ? {
+              name: session.user.name,
+              email: session.user.email,
+              image: session.user.image
+            }
+          : undefined
+      }
     />
   );
 }

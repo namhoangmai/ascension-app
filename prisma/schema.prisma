@@ -133,6 +133,37 @@ enum MeasurementType {
   CUSTOM
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+  SELF_DESCRIBE
+}
+
+enum FitnessGoal {
+  BUILD_MUSCLE
+  LOSE_FAT
+  RECOMPOSITION
+  INCREASE_STRENGTH
+  GENERAL_FITNESS
+}
+
+enum TrainingExperience {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum TrainingStyle {
+  STRENGTH
+  HYPERTROPHY
+  BODYBUILDING
+  POWERLIFTING
+  FUNCTIONAL
+  GENERAL
+}
+
 model User {
   id                  String                          @id @default(cuid())
   name                String?
@@ -149,6 +180,7 @@ model User {
   authenticators      Authenticator[]
   passwordResetTokens PasswordResetToken[]
   preferences         UserPreference?
+  profile             UserProfile?
   restPreferences     ExerciseRestPreference[]
   programs            WorkoutProgram[]
   exercises           Exercise[]
@@ -162,6 +194,33 @@ model User {
   overloadSuggestions ProgressiveOverloadSuggestion[]
 
   @@index([email])
+}
+
+model UserProfile {
+  id                 String              @id @default(cuid())
+  userId             String              @unique
+  firstName          String?
+  lastName           String?
+  username           String?             @unique
+  dateOfBirth        DateTime?
+  gender             Gender?
+  genderSelfDescribe String?
+  heightCm           Decimal?            @db.Decimal(6, 2)
+  weightKg           Decimal?            @db.Decimal(6, 2)
+  mainFitnessGoal    FitnessGoal?
+  trainingExperience TrainingExperience?
+  trainingFrequency  Int?
+  preferredStyle     TrainingStyle?
+  targetWeightKg     Decimal?            @db.Decimal(6, 2)
+  bio                String?             @db.Text
+  profileImageUrl    String?             @db.Text
+  profileCompleted   Boolean             @default(false)
+  profileCompletedAt DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, profileCompleted])
 }
 
 model Account {

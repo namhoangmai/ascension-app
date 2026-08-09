@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/shared/app-shell";
-import { requireUser } from "@/lib/auth/server";
+import { getRequiredCompletedProfile } from "@/features/profile/server";
 
 export default async function ProductLayout({ children }: { children: ReactNode }) {
-  await requireUser();
+  const profile = await getRequiredCompletedProfile();
 
-  return <AppShell>{children}</AppShell>;
+  return <AppShell profile={profile}>{children}</AppShell>;
 }

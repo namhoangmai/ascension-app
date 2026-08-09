@@ -102,7 +102,7 @@ export async function signInWithPassword(
       email: parsed.data.email,
       password: parsed.data.password,
       remember: parsed.data.remember ? "true" : "false",
-      redirectTo: "/dashboard"
+      redirectTo: "/profile/setup"
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -175,7 +175,7 @@ export async function signUpWithPassword(
       email: parsed.data.email,
       password: parsed.data.password,
       remember: parsed.data.remember ? "true" : "false",
-      redirectTo: "/dashboard"
+      redirectTo: "/profile/setup"
     });
 
     return { status: "success" };
@@ -203,7 +203,7 @@ export async function signUpWithPassword(
 export async function signInWithGoogle() {
   "use server";
 
-  await signIn("google", { redirectTo: "/dashboard" });
+  await signIn("google", { redirectTo: "/profile/setup" });
 }
 
 export async function signOutCurrentUser() {

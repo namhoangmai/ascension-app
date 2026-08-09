@@ -8,7 +8,9 @@ import {
   Dumbbell,
   Flame,
   LineChart,
+  LogIn,
   Scale,
+  UserCircle,
   Utensils,
   Zap
 } from "lucide-react";
@@ -22,6 +24,13 @@ interface LandingPageViewProps {
   secondaryHref: Route;
   secondaryLabel: string;
   navActionLabel: string;
+  navProfile?:
+    | {
+        name: string | null | undefined;
+        email: string | null | undefined;
+        image: string | null | undefined;
+      }
+    | undefined;
 }
 
 const dayPlan = [
@@ -85,7 +94,8 @@ export function LandingPageView({
   primaryLabel,
   secondaryHref,
   secondaryLabel,
-  navActionLabel
+  navActionLabel,
+  navProfile
 }: LandingPageViewProps) {
   const reduceMotion = useReducedMotion();
   const assemblyProps = reduceMotion ? {} : ({ initial: "initial", animate: "animate" } as const);
@@ -102,6 +112,9 @@ export function LandingPageView({
     ease: easeOut,
     delay: reduceMotion ? 0 : 0.34 + index * 0.06
   });
+  const profileLabel = navProfile?.name ?? navProfile?.email ?? "Profile";
+  const profileInitial = profileLabel[0]?.toUpperCase();
+  const profileImage = navProfile?.image ?? "";
 
   return (
     <main className="landing-page">
@@ -114,9 +127,31 @@ export function LandingPageView({
           <a href="#training">Training</a>
           <a href="#body">Body</a>
         </div>
-        <Link href={secondaryHref} className="landing-nav__action">
-          {navActionLabel}
-        </Link>
+        {navProfile ? (
+          <Link href="/profile" className="landing-nav__profile" aria-label="Open profile">
+            <span className="landing-nav__avatar" aria-hidden="true">
+              {profileImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={profileImage} alt="" />
+              ) : (profileInitial ?? "") ? (
+                profileInitial
+              ) : (
+                <UserCircle aria-hidden="true" />
+              )}
+            </span>
+            <span>{profileLabel}</span>
+          </Link>
+        ) : (
+          <div className="landing-nav__auth">
+            <Link href="/sign-in" className="landing-nav__login">
+              <LogIn aria-hidden="true" />
+              Login
+            </Link>
+            <Link href={secondaryHref} className="landing-nav__action">
+              {navActionLabel}
+            </Link>
+          </div>
+        )}
       </nav>
 
       <motion.section

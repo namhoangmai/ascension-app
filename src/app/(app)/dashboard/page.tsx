@@ -2,38 +2,53 @@ import { Activity, Dumbbell, Sparkles, Utensils } from "lucide-react";
 
 import { FeatureCard } from "@/components/shared/feature-card";
 import { SectionHeading } from "@/components/shared/section-heading";
+import { getRequiredCompletedProfile } from "@/features/profile/server";
+import {
+  displayNameForProfile,
+  fitnessGoalLabels,
+  trainingExperienceLabels
+} from "@/features/profile/types";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const profile = await getRequiredCompletedProfile();
+  const displayName = displayNameForProfile(profile);
+  const firstName = profile.firstName ?? displayName.split(" ")[0] ?? "athlete";
+  const goal = profile.mainFitnessGoal ? fitnessGoalLabels[profile.mainFitnessGoal] : "your goal";
+  const experience = profile.trainingExperience
+    ? trainingExperienceLabels[profile.trainingExperience].toLowerCase()
+    : "current";
+  const trainingDays = String(profile.trainingFrequency ?? 0);
+
   return (
     <div className="space-y-6">
       <SectionHeading
-        eyebrow="Foundation"
-        title="Built for fast gym logging"
-        description="Ascension fitness platform."
+        eyebrow={`Welcome back, ${firstName}`}
+        title="Built for your next training decision"
+        description={`Your dashboard is tuned for ${goal.toLowerCase()}, ${trainingDays} training days per week, and your ${experience} training history.`}
       />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <FeatureCard
           icon={Dumbbell}
           title="Strength tracking"
-          description="Program, workout day, exercise, session, and set models are ready for low-friction logging."
+          description={`Keep sessions aligned with your ${goal.toLowerCase()} target and preferred weekly rhythm.`}
           href="/strength"
         />
         <FeatureCard
           icon={Utensils}
           title="Macros"
-          description="Food, logs, saved meals, and nutrition goals are normalized around accurate gram-based tracking."
+          description={`Use your current ${profile.weightKg?.toString() ?? "--"} kg baseline when planning intake.`}
           href="/nutrition"
         />
         <FeatureCard
           icon={Activity}
           title="Body progress"
-          description="Weight, measurements, and private photo storage references are included in the schema."
+          description={`Track changes toward ${profile.targetWeightKg ? `${profile.targetWeightKg.toString()} kg` : "your next milestone"}.`}
           href="/body"
         />
         <FeatureCard
           icon={Sparkles}
           title="AI-ready"
-          description="The route plan leaves a clean boundary for meal suggestions once nutrition data exists."
+          description={`Profile context is ready for coaching across strength, macros, body progress, and recovery.`}
           href="/ai-coach"
         />
       </div>

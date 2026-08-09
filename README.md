@@ -30,7 +30,7 @@ npm run db:generate
 npm run db:migrate
 ```
 
-5. Start the app:
+6. Start the app:
 
 ```bash
 npm run dev
