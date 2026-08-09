@@ -47,9 +47,12 @@ import {
   loadStrengthTemplates,
   loadStrengthWorkouts,
   saveStrengthTemplates,
-  saveStrengthWorkouts,
   slugifyExerciseName
 } from "@/features/strength/client-store";
+import {
+  deleteStrengthWorkoutAction,
+  saveStrengthWorkoutAction
+} from "@/features/strength/actions";
 import { cn } from "@/lib/utils";
 import type {
   ExerciseHistoryEntry,
@@ -78,17 +81,23 @@ const CHART_METRICS: { value: ChartMetric; label: string; color: string }[] = [
   { value: "averageReps", label: "Average Reps", color: "#f472b6" }
 ];
 
-export function StrengthTrackingClient() {
+export function StrengthTrackingClient({
+  initialWorkouts
+}: {
+  initialWorkouts: StrengthWorkout[];
+}) {
   const [activeTab, setActiveTab] = useState<TabKey>("history");
-  const [workouts, setWorkouts] = useState<StrengthWorkout[]>([]);
+  const [workouts, setWorkouts] = useState<StrengthWorkout[]>(initialWorkouts);
   const [templates, setTemplates] = useState<StrengthTemplate[]>([]);
   const [draft, setDraft] = useState<StrengthWorkout | null>(null);
   const [recoverableDraft, setRecoverableDraft] = useState<StrengthWorkout | null>(null);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [templateDraft, setTemplateDraft] = useState<StrengthTemplate | null>(null);
+  const [strengthError, setStrengthError] = useState("");
+  const [isSavingWorkout, setIsSavingWorkout] = useState(false);
+  const [deletingWorkoutId, setDeletingWorkoutId] = useState<string | null>(null);
 
   useEffect(() => {
-    setWorkouts(loadStrengthWorkouts());
     setTemplates(loadStrengthTemplates());
 
     const rawDraft = localStorage.getItem(STRENGTH_DRAFT_STORAGE_KEY);
@@ -100,6 +109,10 @@ export function StrengthTrackingClient() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    setWorkouts(initialWorkouts);
+  }, [initialWorkouts]);
 
   useEffect(() => {
     if (draft) {
@@ -117,17 +130,12 @@ export function StrengthTrackingClient() {
 
   const selectedWorkout = workouts.find((workout) => workout.id === selectedWorkoutId);
 
-  function persistWorkouts(nextWorkouts: StrengthWorkout[]) {
-    setWorkouts(nextWorkouts);
-    saveStrengthWorkouts(nextWorkouts);
-  }
-
   function persistTemplates(nextTemplates: StrengthTemplate[]) {
     setTemplates(nextTemplates);
     saveStrengthTemplates(nextTemplates);
   }
 
-  function saveDraft() {
+  async function saveDraft() {
     if (!draft) {
       return;
     }
@@ -148,14 +156,51 @@ export function StrengthTrackingClient() {
       cleanedDraft.exercises = [createExerciseEntry("Bench Press")];
     }
 
-    persistWorkouts([
-      cleanedDraft,
-      ...workouts.filter((workout) => workout.id !== cleanedDraft.id)
+    setIsSavingWorkout(true);
+    setStrengthError("");
+
+    const result = await saveStrengthWorkoutAction(cleanedDraft);
+    setIsSavingWorkout(false);
+
+    if (result.status === "error" || !result.workout) {
+      setStrengthError(result.message ?? "Workout could not be saved.");
+      return;
+    }
+
+    setWorkouts([
+      result.workout,
+      ...workouts.filter((workout) => workout.id !== result.workout?.id)
     ]);
     localStorage.removeItem(STRENGTH_DRAFT_STORAGE_KEY);
     setDraft(null);
     setRecoverableDraft(null);
-    setSelectedWorkoutId(cleanedDraft.id);
+    setSelectedWorkoutId(result.workout.id);
+  }
+
+  async function deleteWorkout(workoutId: string) {
+    if (deletingWorkoutId) {
+      return;
+    }
+
+    const shouldDelete = window.confirm("Delete this workout session? This cannot be undone.");
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setDeletingWorkoutId(workoutId);
+    setStrengthError("");
+
+    const result = await deleteStrengthWorkoutAction(workoutId);
+    setDeletingWorkoutId(null);
+
+    if (result.status === "error") {
+      setStrengthError(result.message ?? "Workout could not be deleted.");
+      return;
+    }
+
+    setWorkouts((current) => current.filter((workout) => workout.id !== workoutId));
+    setSelectedWorkoutId(null);
   }
 
   function startTemplate(template: StrengthTemplate) {
@@ -219,18 +264,23 @@ export function StrengthTrackingClient() {
       </header>
 
       {activeTab === "history" ? (
-        <WorkoutHistory
-          workouts={sortedWorkouts}
-          selectedWorkout={selectedWorkout}
-          onOpenWorkout={setSelectedWorkoutId}
-          onCloseWorkout={() => {
-            setSelectedWorkoutId(null);
-          }}
-          onDeleteWorkout={(workoutId) => {
-            persistWorkouts(workouts.filter((workout) => workout.id !== workoutId));
-            setSelectedWorkoutId(null);
-          }}
-        />
+        <>
+          {strengthError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {strengthError}
+            </div>
+          ) : null}
+          <WorkoutHistory
+            workouts={sortedWorkouts}
+            selectedWorkout={selectedWorkout}
+            deletingWorkoutId={deletingWorkoutId}
+            onOpenWorkout={setSelectedWorkoutId}
+            onCloseWorkout={() => {
+              setSelectedWorkoutId(null);
+            }}
+            onDeleteWorkout={deleteWorkout}
+          />
+        </>
       ) : (
         <TemplateList
           templates={templates}
@@ -304,6 +354,7 @@ export function StrengthTrackingClient() {
               closeDraftEditor();
             }}
             onSave={saveDraft}
+            isSaving={isSavingWorkout}
           />
         ) : null}
 
@@ -349,15 +400,17 @@ function TabButton({
 function WorkoutHistory({
   workouts,
   selectedWorkout,
+  deletingWorkoutId,
   onOpenWorkout,
   onCloseWorkout,
   onDeleteWorkout
 }: {
   workouts: StrengthWorkout[];
   selectedWorkout: StrengthWorkout | undefined;
+  deletingWorkoutId: string | null;
   onOpenWorkout: (workoutId: string) => void;
   onCloseWorkout: () => void;
-  onDeleteWorkout: (workoutId: string) => void;
+  onDeleteWorkout: (workoutId: string) => void | Promise<void>;
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -377,6 +430,7 @@ function WorkoutHistory({
         {selectedWorkout ? (
           <WorkoutDetail
             workout={selectedWorkout}
+            isDeleting={deletingWorkoutId === selectedWorkout.id}
             onClose={onCloseWorkout}
             onDelete={onDeleteWorkout}
           />
@@ -397,6 +451,7 @@ function WorkoutHistory({
           >
             <WorkoutDetail
               workout={selectedWorkout}
+              isDeleting={deletingWorkoutId === selectedWorkout.id}
               onClose={onCloseWorkout}
               onDelete={onDeleteWorkout}
             />
@@ -453,12 +508,14 @@ function WorkoutCard({ workout, onOpen }: { workout: StrengthWorkout; onOpen: ()
 
 function WorkoutDetail({
   workout,
+  isDeleting,
   onClose,
   onDelete
 }: {
   workout: StrengthWorkout;
+  isDeleting: boolean;
   onClose: () => void;
-  onDelete: (workoutId: string) => void;
+  onDelete: (workoutId: string) => void | Promise<void>;
 }) {
   const totals = getWorkoutTotals(workout);
 
@@ -476,8 +533,9 @@ function WorkoutDetail({
           <Button
             size="icon"
             variant="ghost"
+            disabled={isDeleting}
             onClick={() => {
-              onDelete(workout.id);
+              void onDelete(workout.id);
             }}
             aria-label="Delete workout"
           >
@@ -620,13 +678,15 @@ function WorkoutEditor({
   workouts,
   onChange,
   onClose,
-  onSave
+  onSave,
+  isSaving
 }: {
   draft: StrengthWorkout;
   workouts: StrengthWorkout[];
   onChange: (draft: StrengthWorkout) => void;
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
+  isSaving: boolean;
 }) {
   function updateExercise(exerciseId: string, nextExercise: StrengthExerciseEntry) {
     onChange({
@@ -737,9 +797,14 @@ function WorkoutEditor({
             <Plus className="size-4" aria-hidden="true" />
             Add Exercise
           </Button>
-          <Button onClick={onSave}>
+          <Button
+            onClick={() => {
+              void onSave();
+            }}
+            disabled={isSaving}
+          >
             <Save className="size-4" aria-hidden="true" />
-            Save Workout
+            {isSaving ? "Saving..." : "Save Workout"}
           </Button>
         </div>
       </div>
