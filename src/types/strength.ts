@@ -2,7 +2,7 @@ export interface StrengthSet {
   id: string;
   weight: number | null;
   reps: number | null;
-  rpe?: number | null;
+  rir?: number | null;
   restSeconds?: number | null;
   completed: boolean;
   kind?: "working" | "warmup" | "drop" | "failure";

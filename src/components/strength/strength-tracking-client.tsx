@@ -488,15 +488,6 @@ function WorkoutCard({ workout, onOpen }: { workout: StrengthWorkout; onOpen: ()
         <MoreVertical className="size-5 text-muted-foreground" aria-hidden="true" />
       </div>
 
-      <div className="mt-4 space-y-2">
-        {workout.exercises.slice(0, 4).map((exercise) => (
-          <div key={exercise.id} className="flex items-center justify-between gap-3 text-sm">
-            <span className="font-medium">{exercise.name}</span>
-            <span className="text-muted-foreground">{exercise.sets.length} sets</span>
-          </div>
-        ))}
-      </div>
-
       {workout.notes ? (
         <p className="mt-4 border-t border-white/10 pt-3 text-sm text-muted-foreground">
           {workout.notes}
@@ -569,7 +560,7 @@ function WorkoutDetail({
                   <span className="text-muted-foreground">Set {index + 1}</span>
                   <span className="font-medium">
                     {formatSet(set)}
-                    {set.rpe ? ` - RPE ${String(set.rpe)}` : ""}
+                    {set.rir ? ` - rir ${String(set.rir)}` : ""}
                   </span>
                 </div>
               ))}
@@ -896,10 +887,10 @@ function ExerciseEditor({
               />
               <NumberField
                 className="hidden sm:block"
-                label="RPE"
-                value={set.rpe ?? null}
-                onChange={(rpe) => {
-                  updateSet(set.id, { ...set, rpe });
+                label="RIR"
+                value={set.rir ?? null}
+                onChange={(rir) => {
+                  updateSet(set.id, { ...set, rir });
                 }}
               />
               <NumberField

@@ -16,25 +16,25 @@ export const STRENGTH_DRAFT_STORAGE_KEY = "strength.activeDraft.v1";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export const DEFAULT_TEMPLATE_NAMES = [
-  "Push",
-  "Pull",
-  "Legs",
-  "Upper",
-  "Lower",
-  "Anterior",
-  "Posterior",
-  "Full Body"
+  "Default_Push",
+  "Default_Pull",
+  "Default_Legs",
+  "Default_Upper",
+  "Default_Lower",
+  "Default_Anterior",
+  "Default_Posterior",
+  "Default_Full_Body"
 ] as const;
 
 const DEFAULT_TEMPLATE_EXERCISES: Record<(typeof DEFAULT_TEMPLATE_NAMES)[number], string[]> = {
-  Push: ["Bench Press", "Incline DB Press", "Cable Fly", "Lateral Raise", "Tricep Pushdown"],
-  Pull: ["Pull-Up", "Barbell Row", "Lat Pulldown", "Face Pull", "EZ Bar Curl"],
-  Legs: ["Back Squat", "Romanian Deadlift", "Leg Press", "Leg Curl", "Standing Calf Raise"],
-  Upper: ["Bench Press", "Barbell Row", "Overhead Press", "Pull-Up", "Lateral Raise"],
-  Lower: ["Back Squat", "Romanian Deadlift", "Split Squat", "Leg Curl", "Calf Raise"],
-  Anterior: ["Bench Press", "Incline DB Press", "Cable Fly", "Lateral Raise", "Tricep Pushdown"],
-  Posterior: ["Deadlift", "Chest-Supported Row", "Lat Pulldown", "Rear Delt Fly", "Hamstring Curl"],
-  "Full Body": ["Back Squat", "Bench Press", "Barbell Row", "Romanian Deadlift", "Plank"]
+  Default_Push: ["Bench Press", "Incline DB Press", "Cable Fly", "Lateral Raise", "Tricep Pushdown"],
+  Default_Pull: ["Pull-Up", "Barbell Row", "Lat Pulldown", "Face Pull", "EZ Bar Curl"],
+  Default_Legs: ["Back Squat", "Romanian Deadlift", "Leg Press", "Leg Curl", "Standing Calf Raise"],
+  Default_Upper: ["Bench Press", "Barbell Row", "Overhead Press", "Pull-Up", "Lateral Raise"],
+  Default_Lower: ["Back Squat", "Romanian Deadlift", "Split Squat", "Leg Curl", "Calf Raise"],
+  Default_Anterior: ["Bench Press", "Incline DB Press", "Cable Fly", "Lateral Raise", "Tricep Pushdown"],
+  Default_Posterior: ["Deadlift", "Chest-Supported Row", "Lat Pulldown", "Rear Delt Fly", "Hamstring Curl"],
+  Default_Full_Body: ["Back Squat", "Bench Press", "Barbell Row", "Romanian Deadlift", "Plank"]
 };
 
 export function createId(prefix: string) {
@@ -54,7 +54,7 @@ export function createEmptySet(): StrengthSet {
     id: createId("set"),
     weight: null,
     reps: null,
-    rpe: null,
+    rir: null,
     restSeconds: null,
     completed: false,
     kind: "working"
@@ -160,7 +160,7 @@ function makeSet(weight: number, reps: number): Omit<StrengthSet, "id"> {
   return {
     weight,
     reps,
-    rpe: null,
+    rir: null,
     restSeconds: null,
     completed: true,
     kind: "working"

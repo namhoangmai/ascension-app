@@ -124,7 +124,7 @@ function toStrengthWorkout(session: {
               id: set.id,
               weight: toNumber(set.weightKg),
               reps: set.reps,
-              rpe: set.rir,
+              rir: set.rir,
               restSeconds: exercise.restSeconds,
               completed: set.isCompleted,
               kind: strengthSetKind(set.type)
@@ -262,7 +262,7 @@ export async function saveStrengthWorkout(workout: StrengthWorkout): Promise<Str
             orderIndex: setIndex,
             weightKg: set.weight === null ? null : new Prisma.Decimal(set.weight),
             reps: set.reps,
-            rir: set.rpe ?? null,
+            rir: set.rir ?? null,
             isCompleted: set.completed
           }))
         });
