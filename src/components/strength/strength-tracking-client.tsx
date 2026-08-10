@@ -596,70 +596,76 @@ function TemplateList({
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {templates.map((template) => (
-          <article key={template.id} className="rounded-lg border border-white/10 bg-card/90 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold tracking-normal">{template.name}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {template.exerciseNames.length} exercises
-                </p>
+      {templates.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-white/15 bg-card/70 p-5 text-sm text-muted-foreground">
+          No workout templates yet. Create one when you are ready.
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {templates.map((template) => (
+            <article key={template.id} className="rounded-lg border border-white/10 bg-card/90 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-normal">{template.name}</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {template.exerciseNames.length} exercises
+                  </p>
+                </div>
+                <FileText className="size-5 text-primary" aria-hidden="true" />
               </div>
-              <FileText className="size-5 text-primary" aria-hidden="true" />
-            </div>
-            <ol className="mt-4 space-y-2 text-sm">
-              {template.exerciseNames.map((exerciseName, index) => (
-                <li key={`${template.id}-${exerciseName}`} className="flex gap-2">
-                  <span className="w-5 text-muted-foreground">{index + 1}.</span>
-                  <span>{exerciseName}</span>
-                </li>
-              ))}
-            </ol>
-            <div className="mt-5 grid grid-cols-4 gap-2">
-              <Button
-                className="col-span-4"
-                onClick={() => {
-                  onStart(template);
-                }}
-              >
-                <Dumbbell className="size-4" aria-hidden="true" />
-                Start Workout
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  onEdit(template);
-                }}
-                aria-label="Rename template"
-              >
-                <Pencil className="size-4" aria-hidden="true" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  onDuplicate(template);
-                }}
-                aria-label="Duplicate template"
-              >
-                <Copy className="size-4" aria-hidden="true" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  onDelete(template.id);
-                }}
-                aria-label="Delete template"
-              >
-                <Trash2 className="size-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </article>
-        ))}
-      </div>
+              <ol className="mt-4 space-y-2 text-sm">
+                {template.exerciseNames.map((exerciseName, index) => (
+                  <li key={`${template.id}-${exerciseName}`} className="flex gap-2">
+                    <span className="w-5 text-muted-foreground">{index + 1}.</span>
+                    <span>{exerciseName}</span>
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-5 grid grid-cols-4 gap-2">
+                <Button
+                  className="col-span-4"
+                  onClick={() => {
+                    onStart(template);
+                  }}
+                >
+                  <Dumbbell className="size-4" aria-hidden="true" />
+                  Start Workout
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    onEdit(template);
+                  }}
+                  aria-label="Rename template"
+                >
+                  <Pencil className="size-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    onDuplicate(template);
+                  }}
+                  aria-label="Duplicate template"
+                >
+                  <Copy className="size-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    onDelete(template.id);
+                  }}
+                  aria-label="Delete template"
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

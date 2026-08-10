@@ -15,28 +15,6 @@ export const STRENGTH_DRAFT_STORAGE_KEY = "strength.activeDraft.v1";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export const DEFAULT_TEMPLATE_NAMES = [
-  "Default_Push",
-  "Default_Pull",
-  "Default_Legs",
-  "Default_Upper",
-  "Default_Lower",
-  "Default_Anterior",
-  "Default_Posterior",
-  "Default_Full_Body"
-] as const;
-
-const DEFAULT_TEMPLATE_EXERCISES: Record<(typeof DEFAULT_TEMPLATE_NAMES)[number], string[]> = {
-  Default_Push: ["Bench Press", "Incline DB Press", "Cable Fly", "Lateral Raise", "Tricep Pushdown"],
-  Default_Pull: ["Pull-Up", "Barbell Row", "Lat Pulldown", "Face Pull", "EZ Bar Curl"],
-  Default_Legs: ["Back Squat", "Romanian Deadlift", "Leg Press", "Leg Curl", "Standing Calf Raise"],
-  Default_Upper: ["Bench Press", "Barbell Row", "Overhead Press", "Pull-Up", "Lateral Raise"],
-  Default_Lower: ["Back Squat", "Romanian Deadlift", "Split Squat", "Leg Curl", "Calf Raise"],
-  Default_Anterior: ["Bench Press", "Incline DB Press", "Cable Fly", "Lateral Raise", "Tricep Pushdown"],
-  Default_Posterior: ["Deadlift", "Chest-Supported Row", "Lat Pulldown", "Rear Delt Fly", "Hamstring Curl"],
-  Default_Full_Body: ["Back Squat", "Bench Press", "Barbell Row", "Romanian Deadlift", "Plank"]
-};
-
 export function createId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -96,12 +74,6 @@ export function createTemplate(name: string, exerciseNames: string[]): StrengthT
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
-}
-
-export function getSeedTemplates() {
-  return DEFAULT_TEMPLATE_NAMES.map((name) =>
-    createTemplate(name, DEFAULT_TEMPLATE_EXERCISES[name])
-  );
 }
 
 export function getSeedWorkouts(): StrengthWorkout[] {
@@ -223,9 +195,7 @@ export function loadStrengthTemplates() {
     return templates;
   }
 
-  const seeded = getSeedTemplates();
-  saveStrengthTemplates(seeded);
-  return seeded;
+  return [];
 }
 
 export function saveStrengthTemplates(templates: StrengthTemplate[]) {
