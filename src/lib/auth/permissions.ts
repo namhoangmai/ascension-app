@@ -10,7 +10,8 @@ export const protectedRoutes = [
   "/nutrition",
   "/body",
   "/analytics",
-  "/settings"
+  "/settings",
+  "/profile"
 ] as const;
 
 export const authRoutes = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password"] as const;

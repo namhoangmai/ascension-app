@@ -47,9 +47,12 @@ import {
   loadStrengthTemplates,
   loadStrengthWorkouts,
   saveStrengthTemplates,
-  saveStrengthWorkouts,
   slugifyExerciseName
 } from "@/features/strength/client-store";
+import {
+  deleteStrengthWorkoutAction,
+  saveStrengthWorkoutAction
+} from "@/features/strength/actions";
 import { cn } from "@/lib/utils";
 import type {
   ExerciseHistoryEntry,
@@ -78,17 +81,23 @@ const CHART_METRICS: { value: ChartMetric; label: string; color: string }[] = [
   { value: "averageReps", label: "Average Reps", color: "#f472b6" }
 ];
 
-export function StrengthTrackingClient() {
+export function StrengthTrackingClient({
+  initialWorkouts
+}: {
+  initialWorkouts: StrengthWorkout[];
+}) {
   const [activeTab, setActiveTab] = useState<TabKey>("history");
-  const [workouts, setWorkouts] = useState<StrengthWorkout[]>([]);
+  const [workouts, setWorkouts] = useState<StrengthWorkout[]>(initialWorkouts);
   const [templates, setTemplates] = useState<StrengthTemplate[]>([]);
   const [draft, setDraft] = useState<StrengthWorkout | null>(null);
   const [recoverableDraft, setRecoverableDraft] = useState<StrengthWorkout | null>(null);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [templateDraft, setTemplateDraft] = useState<StrengthTemplate | null>(null);
+  const [strengthError, setStrengthError] = useState("");
+  const [isSavingWorkout, setIsSavingWorkout] = useState(false);
+  const [deletingWorkoutId, setDeletingWorkoutId] = useState<string | null>(null);
 
   useEffect(() => {
-    setWorkouts(loadStrengthWorkouts());
     setTemplates(loadStrengthTemplates());
 
     const rawDraft = localStorage.getItem(STRENGTH_DRAFT_STORAGE_KEY);
@@ -100,6 +109,10 @@ export function StrengthTrackingClient() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    setWorkouts(initialWorkouts);
+  }, [initialWorkouts]);
 
   useEffect(() => {
     if (draft) {
@@ -117,17 +130,12 @@ export function StrengthTrackingClient() {
 
   const selectedWorkout = workouts.find((workout) => workout.id === selectedWorkoutId);
 
-  function persistWorkouts(nextWorkouts: StrengthWorkout[]) {
-    setWorkouts(nextWorkouts);
-    saveStrengthWorkouts(nextWorkouts);
-  }
-
   function persistTemplates(nextTemplates: StrengthTemplate[]) {
     setTemplates(nextTemplates);
     saveStrengthTemplates(nextTemplates);
   }
 
-  function saveDraft() {
+  async function saveDraft() {
     if (!draft) {
       return;
     }
@@ -148,14 +156,51 @@ export function StrengthTrackingClient() {
       cleanedDraft.exercises = [createExerciseEntry("Bench Press")];
     }
 
-    persistWorkouts([
-      cleanedDraft,
-      ...workouts.filter((workout) => workout.id !== cleanedDraft.id)
+    setIsSavingWorkout(true);
+    setStrengthError("");
+
+    const result = await saveStrengthWorkoutAction(cleanedDraft);
+    setIsSavingWorkout(false);
+
+    if (result.status === "error" || !result.workout) {
+      setStrengthError(result.message ?? "Workout could not be saved.");
+      return;
+    }
+
+    setWorkouts([
+      result.workout,
+      ...workouts.filter((workout) => workout.id !== result.workout?.id)
     ]);
     localStorage.removeItem(STRENGTH_DRAFT_STORAGE_KEY);
     setDraft(null);
     setRecoverableDraft(null);
-    setSelectedWorkoutId(cleanedDraft.id);
+    setSelectedWorkoutId(result.workout.id);
+  }
+
+  async function deleteWorkout(workoutId: string) {
+    if (deletingWorkoutId) {
+      return;
+    }
+
+    const shouldDelete = window.confirm("Delete this workout session? This cannot be undone.");
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setDeletingWorkoutId(workoutId);
+    setStrengthError("");
+
+    const result = await deleteStrengthWorkoutAction(workoutId);
+    setDeletingWorkoutId(null);
+
+    if (result.status === "error") {
+      setStrengthError(result.message ?? "Workout could not be deleted.");
+      return;
+    }
+
+    setWorkouts((current) => current.filter((workout) => workout.id !== workoutId));
+    setSelectedWorkoutId(null);
   }
 
   function startTemplate(template: StrengthTemplate) {
@@ -196,10 +241,7 @@ export function StrengthTrackingClient() {
         <div>
           <p className="text-sm font-medium text-primary">Training</p>
           <h1 className="text-3xl font-semibold tracking-normal">Strength Tracking</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Log sessions, reuse templates, compare against your last lift, and follow exercise PRs
-            over time.
-          </p>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Log sessions</p>
         </div>
         <div className="flex rounded-md border border-white/10 bg-white/[0.04] p-1">
           <TabButton
@@ -222,18 +264,23 @@ export function StrengthTrackingClient() {
       </header>
 
       {activeTab === "history" ? (
-        <WorkoutHistory
-          workouts={sortedWorkouts}
-          selectedWorkout={selectedWorkout}
-          onOpenWorkout={setSelectedWorkoutId}
-          onCloseWorkout={() => {
-            setSelectedWorkoutId(null);
-          }}
-          onDeleteWorkout={(workoutId) => {
-            persistWorkouts(workouts.filter((workout) => workout.id !== workoutId));
-            setSelectedWorkoutId(null);
-          }}
-        />
+        <>
+          {strengthError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {strengthError}
+            </div>
+          ) : null}
+          <WorkoutHistory
+            workouts={sortedWorkouts}
+            selectedWorkout={selectedWorkout}
+            deletingWorkoutId={deletingWorkoutId}
+            onOpenWorkout={setSelectedWorkoutId}
+            onCloseWorkout={() => {
+              setSelectedWorkoutId(null);
+            }}
+            onDeleteWorkout={deleteWorkout}
+          />
+        </>
       ) : (
         <TemplateList
           templates={templates}
@@ -307,6 +354,7 @@ export function StrengthTrackingClient() {
               closeDraftEditor();
             }}
             onSave={saveDraft}
+            isSaving={isSavingWorkout}
           />
         ) : null}
 
@@ -352,15 +400,17 @@ function TabButton({
 function WorkoutHistory({
   workouts,
   selectedWorkout,
+  deletingWorkoutId,
   onOpenWorkout,
   onCloseWorkout,
   onDeleteWorkout
 }: {
   workouts: StrengthWorkout[];
   selectedWorkout: StrengthWorkout | undefined;
+  deletingWorkoutId: string | null;
   onOpenWorkout: (workoutId: string) => void;
   onCloseWorkout: () => void;
-  onDeleteWorkout: (workoutId: string) => void;
+  onDeleteWorkout: (workoutId: string) => void | Promise<void>;
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -380,6 +430,7 @@ function WorkoutHistory({
         {selectedWorkout ? (
           <WorkoutDetail
             workout={selectedWorkout}
+            isDeleting={deletingWorkoutId === selectedWorkout.id}
             onClose={onCloseWorkout}
             onDelete={onDeleteWorkout}
           />
@@ -400,6 +451,7 @@ function WorkoutHistory({
           >
             <WorkoutDetail
               workout={selectedWorkout}
+              isDeleting={deletingWorkoutId === selectedWorkout.id}
               onClose={onCloseWorkout}
               onDelete={onDeleteWorkout}
             />
@@ -436,15 +488,6 @@ function WorkoutCard({ workout, onOpen }: { workout: StrengthWorkout; onOpen: ()
         <MoreVertical className="size-5 text-muted-foreground" aria-hidden="true" />
       </div>
 
-      <div className="mt-4 space-y-2">
-        {workout.exercises.slice(0, 4).map((exercise) => (
-          <div key={exercise.id} className="flex items-center justify-between gap-3 text-sm">
-            <span className="font-medium">{exercise.name}</span>
-            <span className="text-muted-foreground">{exercise.sets.length} sets</span>
-          </div>
-        ))}
-      </div>
-
       {workout.notes ? (
         <p className="mt-4 border-t border-white/10 pt-3 text-sm text-muted-foreground">
           {workout.notes}
@@ -456,12 +499,14 @@ function WorkoutCard({ workout, onOpen }: { workout: StrengthWorkout; onOpen: ()
 
 function WorkoutDetail({
   workout,
+  isDeleting,
   onClose,
   onDelete
 }: {
   workout: StrengthWorkout;
+  isDeleting: boolean;
   onClose: () => void;
-  onDelete: (workoutId: string) => void;
+  onDelete: (workoutId: string) => void | Promise<void>;
 }) {
   const totals = getWorkoutTotals(workout);
 
@@ -479,8 +524,9 @@ function WorkoutDetail({
           <Button
             size="icon"
             variant="ghost"
+            disabled={isDeleting}
             onClick={() => {
-              onDelete(workout.id);
+              void onDelete(workout.id);
             }}
             aria-label="Delete workout"
           >
@@ -514,7 +560,7 @@ function WorkoutDetail({
                   <span className="text-muted-foreground">Set {index + 1}</span>
                   <span className="font-medium">
                     {formatSet(set)}
-                    {set.rpe ? ` - RPE ${String(set.rpe)}` : ""}
+                    {set.rir ? ` - rir ${String(set.rir)}` : ""}
                   </span>
                 </div>
               ))}
@@ -550,70 +596,76 @@ function TemplateList({
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {templates.map((template) => (
-          <article key={template.id} className="rounded-lg border border-white/10 bg-card/90 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold tracking-normal">{template.name}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {template.exerciseNames.length} exercises
-                </p>
+      {templates.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-white/15 bg-card/70 p-5 text-sm text-muted-foreground">
+          No workout templates yet. Create one when you are ready.
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {templates.map((template) => (
+            <article key={template.id} className="rounded-lg border border-white/10 bg-card/90 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-normal">{template.name}</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {template.exerciseNames.length} exercises
+                  </p>
+                </div>
+                <FileText className="size-5 text-primary" aria-hidden="true" />
               </div>
-              <FileText className="size-5 text-primary" aria-hidden="true" />
-            </div>
-            <ol className="mt-4 space-y-2 text-sm">
-              {template.exerciseNames.map((exerciseName, index) => (
-                <li key={`${template.id}-${exerciseName}`} className="flex gap-2">
-                  <span className="w-5 text-muted-foreground">{index + 1}.</span>
-                  <span>{exerciseName}</span>
-                </li>
-              ))}
-            </ol>
-            <div className="mt-5 grid grid-cols-4 gap-2">
-              <Button
-                className="col-span-4"
-                onClick={() => {
-                  onStart(template);
-                }}
-              >
-                <Dumbbell className="size-4" aria-hidden="true" />
-                Start Workout
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  onEdit(template);
-                }}
-                aria-label="Rename template"
-              >
-                <Pencil className="size-4" aria-hidden="true" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  onDuplicate(template);
-                }}
-                aria-label="Duplicate template"
-              >
-                <Copy className="size-4" aria-hidden="true" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  onDelete(template.id);
-                }}
-                aria-label="Delete template"
-              >
-                <Trash2 className="size-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </article>
-        ))}
-      </div>
+              <ol className="mt-4 space-y-2 text-sm">
+                {template.exerciseNames.map((exerciseName, index) => (
+                  <li key={`${template.id}-${exerciseName}`} className="flex gap-2">
+                    <span className="w-5 text-muted-foreground">{index + 1}.</span>
+                    <span>{exerciseName}</span>
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-5 grid grid-cols-4 gap-2">
+                <Button
+                  className="col-span-4"
+                  onClick={() => {
+                    onStart(template);
+                  }}
+                >
+                  <Dumbbell className="size-4" aria-hidden="true" />
+                  Start Workout
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    onEdit(template);
+                  }}
+                  aria-label="Rename template"
+                >
+                  <Pencil className="size-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    onDuplicate(template);
+                  }}
+                  aria-label="Duplicate template"
+                >
+                  <Copy className="size-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    onDelete(template.id);
+                  }}
+                  aria-label="Delete template"
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -623,13 +675,15 @@ function WorkoutEditor({
   workouts,
   onChange,
   onClose,
-  onSave
+  onSave,
+  isSaving
 }: {
   draft: StrengthWorkout;
   workouts: StrengthWorkout[];
   onChange: (draft: StrengthWorkout) => void;
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
+  isSaving: boolean;
 }) {
   function updateExercise(exerciseId: string, nextExercise: StrengthExerciseEntry) {
     onChange({
@@ -740,9 +794,14 @@ function WorkoutEditor({
             <Plus className="size-4" aria-hidden="true" />
             Add Exercise
           </Button>
-          <Button onClick={onSave}>
+          <Button
+            onClick={() => {
+              void onSave();
+            }}
+            disabled={isSaving}
+          >
             <Save className="size-4" aria-hidden="true" />
-            Save Workout
+            {isSaving ? "Saving..." : "Save Workout"}
           </Button>
         </div>
       </div>
@@ -834,10 +893,10 @@ function ExerciseEditor({
               />
               <NumberField
                 className="hidden sm:block"
-                label="RPE"
-                value={set.rpe ?? null}
-                onChange={(rpe) => {
-                  updateSet(set.id, { ...set, rpe });
+                label="RIR"
+                value={set.rir ?? null}
+                onChange={(rir) => {
+                  updateSet(set.id, { ...set, rir });
                 }}
               />
               <NumberField

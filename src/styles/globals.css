@@ -141,6 +141,8 @@
 
   .landing-nav__links a,
   .landing-nav__action,
+  .landing-nav__login,
+  .landing-nav__profile,
   .landing-footer__meta a,
   .landing-sticky-cta a {
     color: var(--color-muted);
@@ -155,9 +157,68 @@
   }
 
   .landing-nav__links a:hover,
+  .landing-nav__login:hover,
+  .landing-nav__profile:hover,
   .landing-nav__action:hover,
   .landing-footer__meta a:hover {
     color: var(--color-ink);
+  }
+
+  .landing-nav__auth,
+  .landing-nav__login,
+  .landing-nav__profile {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .landing-nav__login,
+  .landing-nav__profile {
+    border-radius: 999px;
+    padding: var(--space-xs) var(--space-sm);
+  }
+
+  .landing-nav__login svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .landing-nav__profile {
+    max-width: 12rem;
+    border: var(--rule-hair) solid var(--color-rule);
+    background: color-mix(in oklch, var(--color-paper-4) 72%, transparent);
+    color: var(--color-ink);
+  }
+
+  .landing-nav__profile span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .landing-nav__avatar {
+    display: grid;
+    width: 1.75rem;
+    aspect-ratio: 1;
+    flex: 0 0 auto;
+    overflow: hidden;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(in oklch, var(--color-accent) 18%, transparent);
+    color: var(--color-accent);
+    font-size: var(--text-xs);
+    font-weight: 800;
+  }
+
+  .landing-nav__avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .landing-nav__avatar svg {
+    width: 1rem;
+    height: 1rem;
   }
 
   .landing-nav__action {
@@ -689,6 +750,20 @@
   @media (max-width: 39.98rem) {
     .landing-nav {
       width: min(calc(100% - (var(--space-md) * 2)), 24rem);
+    }
+
+    .landing-nav__login {
+      width: 2.5rem;
+      justify-content: center;
+      padding-inline: 0;
+    }
+
+    .landing-nav__login {
+      font-size: 0;
+    }
+
+    .landing-nav__auth {
+      gap: var(--space-2xs);
     }
 
     .landing-plan-grid,

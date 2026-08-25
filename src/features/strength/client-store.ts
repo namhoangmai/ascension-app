@@ -15,28 +15,6 @@ export const STRENGTH_DRAFT_STORAGE_KEY = "strength.activeDraft.v1";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export const DEFAULT_TEMPLATE_NAMES = [
-  "Push",
-  "Pull",
-  "Legs",
-  "Upper",
-  "Lower",
-  "Anterior",
-  "Posterior",
-  "Full Body"
-] as const;
-
-const DEFAULT_TEMPLATE_EXERCISES: Record<(typeof DEFAULT_TEMPLATE_NAMES)[number], string[]> = {
-  Push: ["Bench Press", "Incline DB Press", "Cable Fly", "Lateral Raise", "Tricep Pushdown"],
-  Pull: ["Pull-Up", "Barbell Row", "Lat Pulldown", "Face Pull", "EZ Bar Curl"],
-  Legs: ["Back Squat", "Romanian Deadlift", "Leg Press", "Leg Curl", "Standing Calf Raise"],
-  Upper: ["Bench Press", "Barbell Row", "Overhead Press", "Pull-Up", "Lateral Raise"],
-  Lower: ["Back Squat", "Romanian Deadlift", "Split Squat", "Leg Curl", "Calf Raise"],
-  Anterior: ["Bench Press", "Incline DB Press", "Cable Fly", "Lateral Raise", "Tricep Pushdown"],
-  Posterior: ["Deadlift", "Chest-Supported Row", "Lat Pulldown", "Rear Delt Fly", "Hamstring Curl"],
-  "Full Body": ["Back Squat", "Bench Press", "Barbell Row", "Romanian Deadlift", "Plank"]
-};
-
 export function createId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -54,7 +32,7 @@ export function createEmptySet(): StrengthSet {
     id: createId("set"),
     weight: null,
     reps: null,
-    rpe: null,
+    rir: null,
     restSeconds: null,
     completed: false,
     kind: "working"
@@ -96,12 +74,6 @@ export function createTemplate(name: string, exerciseNames: string[]): StrengthT
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
-}
-
-export function getSeedTemplates() {
-  return DEFAULT_TEMPLATE_NAMES.map((name) =>
-    createTemplate(name, DEFAULT_TEMPLATE_EXERCISES[name])
-  );
 }
 
 export function getSeedWorkouts(): StrengthWorkout[] {
@@ -160,7 +132,7 @@ function makeSet(weight: number, reps: number): Omit<StrengthSet, "id"> {
   return {
     weight,
     reps,
-    rpe: null,
+    rir: null,
     restSeconds: null,
     completed: true,
     kind: "working"
@@ -223,9 +195,7 @@ export function loadStrengthTemplates() {
     return templates;
   }
 
-  const seeded = getSeedTemplates();
-  saveStrengthTemplates(seeded);
-  return seeded;
+  return [];
 }
 
 export function saveStrengthTemplates(templates: StrengthTemplate[]) {
