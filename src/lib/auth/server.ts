@@ -215,7 +215,7 @@ export async function signInWithFacebook() {
 export async function signOutCurrentUser() {
   "use server";
 
-  await signOut({ redirectTo: "/sign-in" });
+  await signOut({ redirectTo: "/" });
 }
 
 export async function requestPasswordReset(
