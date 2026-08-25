@@ -22,6 +22,7 @@ export interface FoodDatabaseItem {
   fatPer100g: number;
   createdAt: number;
   source?: "netherlands" | "custom" | "fatsecret";
+  imageUrl?: string;
 }
 
 export interface SavedMealFood {

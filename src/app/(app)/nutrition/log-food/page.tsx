@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type Route } from "next";
-import { ArrowLeft, Plus, Save, Search, Utensils } from "lucide-react";
-import { useEffect, useMemo, useState, type SyntheticEvent } from "react";
+import { ArrowLeft, ImagePlus, Plus, Save, Utensils, X } from "lucide-react";
+import { useEffect, useMemo, useState, type ChangeEvent, type SyntheticEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +26,6 @@ import type {
 } from "@/types/nutrition";
 
 const DEFAULT_GRAMS = 100;
-const DEFAULT_FATSECRET_FOOD_ID = "33691";
 
 interface FoodFormState {
   name: string;
@@ -104,38 +103,6 @@ function parseMacroValue(value: string) {
   return numberValue;
 }
 
-function FoodMacroRow({ food }: { food: FoodDatabaseItem }) {
-  return (
-    <div className="grid grid-cols-4 gap-2 text-center text-[11px] text-muted-foreground">
-      <span>{String(food.caloriesPer100g)} kcal</span>
-      <span>{String(food.proteinPer100g)}g P</span>
-      <span>{String(food.carbsPer100g)}g C</span>
-      <span>{String(food.fatPer100g)}g F</span>
-    </div>
-  );
-}
-
-function getFoodPreview(food: FoodDatabaseItem, grams: number) {
-  const multiplier = grams / 100;
-
-  return {
-    calories: Math.round(food.caloriesPer100g * multiplier),
-    protein: Number((food.proteinPer100g * multiplier).toFixed(1)),
-    carbs: Number((food.carbsPer100g * multiplier).toFixed(1)),
-    fat: Number((food.fatPer100g * multiplier).toFixed(1))
-  };
-}
-
-function isFoodImportResponse(value: unknown): value is { food: FoodDatabaseItem } {
-  if (!value || typeof value !== "object" || !("food" in value)) {
-    return false;
-  }
-
-  const response = value as { food?: unknown };
-
-  return isFoodDatabaseItem(response.food);
-}
-
 export default function LogFoodPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -144,13 +111,9 @@ export default function LogFoodPage() {
 
   const [customFoods, setCustomFoods] = useState<FoodDatabaseItem[]>([]);
   const [savedMeals, setSavedMeals] = useState<SavedMealItem[]>([]);
-  const [query, setQuery] = useState("");
-  const [selectedFood, setSelectedFood] = useState<FoodDatabaseItem | null>(null);
-  const [selectedGrams, setSelectedGrams] = useState(DEFAULT_GRAMS);
   const [foodForm, setFoodForm] = useState<FoodFormState>(EMPTY_FOOD_FORM);
   const [foodFormError, setFoodFormError] = useState<string | null>(null);
-  const [fatSecretFoodId, setFatSecretFoodId] = useState(DEFAULT_FATSECRET_FOOD_ID);
-  const [isImportingFatSecretFood, setIsImportingFatSecretFood] = useState(false);
+  const [foodPhotoDataUrl, setFoodPhotoDataUrl] = useState("");
   const [mealName, setMealName] = useState("");
   const [mealFoodId, setMealFoodId] = useState(DUTCH_FOOD_DATABASE[0]?.id ?? "");
   const [mealGrams, setMealGrams] = useState(DEFAULT_GRAMS);
@@ -164,20 +127,6 @@ export default function LogFoodPage() {
 
   const foods = useMemo(() => [...DUTCH_FOOD_DATABASE, ...customFoods], [customFoods]);
 
-  const filteredFoods = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return [];
-    }
-
-    return foods.filter((food) => food.name.toLowerCase().includes(normalizedQuery));
-  }, [foods, query]);
-
-  const hasSearchQuery = query.trim().length > 0;
-  const safeSelectedGrams = Number.isFinite(selectedGrams) && selectedGrams > 0 ? selectedGrams : 0;
-  const selectedFoodPreview = selectedFood ? getFoodPreview(selectedFood, safeSelectedGrams) : null;
-
   function persistLogs(items: NutritionLogItem[]) {
     const logsByDate = readLogsByDate();
     const nextLogs = {
@@ -188,20 +137,19 @@ export default function LogFoodPage() {
     localStorage.setItem(FOOD_LOG_STORAGE_KEY, JSON.stringify(nextLogs));
   }
 
-  function handleSelectFood(food: FoodDatabaseItem) {
-    setSelectedFood(food);
-    setSelectedGrams(DEFAULT_GRAMS);
-    setStatusMessage(null);
-  }
+  function handleFoodPhotoChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
 
-  function handleLogSelectedFood() {
-    if (!selectedFood || !Number.isFinite(selectedGrams) || selectedGrams <= 0) {
-      setStatusMessage("Enter a valid amount in grams.");
+    if (!file) {
       return;
     }
 
-    persistLogs([calculateLogItem(selectedFood, selectedGrams)]);
-    router.push(nutritionHref);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFoodPhotoDataUrl(typeof reader.result === "string" ? reader.result : "");
+    };
+    reader.readAsDataURL(file);
   }
 
   function handleCreateFood(event: SyntheticEvent<HTMLFormElement>) {
@@ -232,7 +180,8 @@ export default function LogFoodPage() {
       carbsPer100g,
       fatPer100g,
       createdAt: Date.now(),
-      source: "custom"
+      source: "custom",
+      ...(foodPhotoDataUrl ? { imageUrl: foodPhotoDataUrl } : {})
     };
 
     const nextCustomFoods = [customFood, ...customFoods];
@@ -240,49 +189,8 @@ export default function LogFoodPage() {
     localStorage.setItem(FOOD_DATABASE_STORAGE_KEY, JSON.stringify(nextCustomFoods));
     setFoodForm(EMPTY_FOOD_FORM);
     setFoodFormError(null);
+    setFoodPhotoDataUrl("");
     setStatusMessage(`${name} added to your food database.`);
-  }
-
-  async function handleImportFatSecretFood() {
-    const foodId = fatSecretFoodId.trim();
-
-    if (!/^\d+$/.test(foodId)) {
-      setStatusMessage("Enter a numeric FatSecret food id.");
-      return;
-    }
-
-    setIsImportingFatSecretFood(true);
-    setStatusMessage(null);
-
-    try {
-      const response = await fetch(`/api/nutrition/fatsecret/food?foodId=${foodId}`);
-      const payload: unknown = await response.json();
-
-      if (!response.ok || !isFoodImportResponse(payload)) {
-        const errorMessage =
-          payload && typeof payload === "object" && "error" in payload
-            ? String(payload.error)
-            : "Unable to import FatSecret food.";
-
-        setStatusMessage(errorMessage);
-        return;
-      }
-
-      const importedFood = payload.food;
-      const nextCustomFoods = [
-        importedFood,
-        ...customFoods.filter((food) => food.id !== importedFood.id)
-      ];
-
-      setCustomFoods(nextCustomFoods);
-      localStorage.setItem(FOOD_DATABASE_STORAGE_KEY, JSON.stringify(nextCustomFoods));
-      setQuery(importedFood.name);
-      setStatusMessage(`${importedFood.name} imported from FatSecret.`);
-    } catch {
-      setStatusMessage("Unable to reach the FatSecret import endpoint.");
-    } finally {
-      setIsImportingFatSecretFood(false);
-    }
   }
 
   function handleAddMealBuilderItem() {
@@ -335,7 +243,7 @@ export default function LogFoodPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 pb-24">
+    <div className="w-full max-w-6xl space-y-6 px-4 pb-24 sm:px-6 lg:mx-auto lg:px-8">
       <header className="flex items-center justify-between gap-3">
         <Button asChild variant="ghost" size="sm">
           <Link href={nutritionHref}>
@@ -348,30 +256,16 @@ export default function LogFoodPage() {
         </div>
       </header>
 
-      <section className="rounded-2xl border border-white/10 bg-card/90 p-4 shadow-xl shadow-black/20">
+      <section className="rounded-2xl border border-white/10 bg-card/90 p-4 shadow-xl shadow-black/20 sm:p-6">
         <div className="flex items-center gap-3">
           <div className="grid size-11 place-items-center rounded-full bg-primary/15 text-primary">
-            <Search className="size-5" aria-hidden="true" />
+            <Utensils className="size-5" aria-hidden="true" />
           </div>
           <div>
             <h1 className="text-2xl font-semibold tracking-normal">Log food</h1>
-            <p className="text-sm text-muted-foreground">
-              Search Dutch staples, add foods, or log saved meals.
-            </p>
+            <p className="text-sm text-muted-foreground">Add foods you eat, or log a saved meal.</p>
           </div>
         </div>
-
-        <label className="mt-5 flex h-12 items-center gap-3 rounded-xl border border-white/10 bg-background/70 px-4">
-          <Search className="size-4 text-muted-foreground" aria-hidden="true" />
-          <input
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-            }}
-            placeholder="Search Netherlands food database"
-            className="w-full bg-transparent text-base outline-none placeholder:text-muted-foreground"
-          />
-        </label>
       </section>
 
       {statusMessage ? (
@@ -380,319 +274,206 @@ export default function LogFoodPage() {
         </p>
       ) : null}
 
-      {hasSearchQuery ? (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Search results</h2>
-            <p className="text-xs text-muted-foreground">{String(filteredFoods.length)} found</p>
-          </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
+        <section className="rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6 lg:col-span-2">
+          <h2 className="text-lg font-semibold">Add food</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Create foods you eat often with nutrition per 100g.
+          </p>
 
-          {filteredFoods.length > 0 ? (
-            <div className="space-y-3">
-              {filteredFoods.map((food) => {
-                return (
-                  <article
-                    key={food.id}
-                    className="rounded-2xl border border-white/10 bg-card/80 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="truncate text-base font-semibold">{food.name}</h3>
-                          <span className="bg-white/8 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-normal text-muted-foreground">
-                            {food.source === "custom"
-                              ? "Custom"
-                              : food.source === "fatsecret"
-                                ? "FatSecret"
-                                : "NL"}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">Nutrition per 100g</p>
-                      </div>
-                      <Button
-                        type="button"
-                        size="icon"
-                        aria-label={`Select ${food.name}`}
-                        onClick={() => {
-                          handleSelectFood(food);
-                        }}
-                      >
-                        <Plus className="size-5" aria-hidden="true" />
-                      </Button>
-                    </div>
-
-                    <div className="mt-4">
-                      <FoodMacroRow food={food} />
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="rounded-2xl border border-dashed border-white/10 bg-card/60 p-4 text-sm text-muted-foreground">
-              No foods found. Add it manually or import it from FatSecret.
-            </p>
-          )}
-        </section>
-      ) : null}
-
-      {selectedFood && selectedFoodPreview ? (
-        <section className="rounded-2xl border border-primary/25 bg-card/95 p-4 shadow-xl shadow-black/20">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm text-muted-foreground">Log amount</p>
-              <h2 className="truncate text-xl font-semibold">{selectedFood.name}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Nutrition calculated from grams.</p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setSelectedFood(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-
-          <label className="mt-4 flex h-14 items-center justify-between gap-3 rounded-xl border border-white/10 bg-background/70 px-4 text-sm">
-            <span className="font-medium text-muted-foreground">Grams</span>
+          <form className="mt-4 space-y-4" onSubmit={handleCreateFood}>
             <input
-              type="number"
-              min="1"
-              step="0.1"
-              inputMode="decimal"
-              value={selectedGrams || ""}
+              value={foodForm.name}
               onChange={(event) => {
-                setSelectedGrams(Number(event.target.value));
+                setFoodForm((form) => ({ ...form, name: event.target.value }));
               }}
-              className="w-28 bg-transparent text-right text-xl font-semibold outline-none"
-              autoFocus
+              placeholder="Food name"
+              className="h-12 w-full rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
             />
-          </label>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {(["caloriesPer100g", "proteinPer100g", "carbsPer100g", "fatPer100g"] as const).map(
+                (field) => (
+                  <input
+                    key={field}
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    inputMode="decimal"
+                    value={foodForm[field]}
+                    onChange={(event) => {
+                      setFoodForm((form) => ({ ...form, [field]: event.target.value }));
+                    }}
+                    placeholder={
+                      field === "caloriesPer100g"
+                        ? "Calories"
+                        : field === "proteinPer100g"
+                          ? "Protein"
+                          : field === "carbsPer100g"
+                            ? "Carbs"
+                            : "Fat"
+                    }
+                    className="h-12 rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
+                  />
+                )
+              )}
+            </div>
 
-          <div className="mt-4 grid grid-cols-4 gap-2 rounded-xl bg-background/60 p-3 text-center">
-            <div>
-              <p className="text-base font-semibold">{String(selectedFoodPreview.calories)}</p>
-              <p className="text-[11px] text-muted-foreground">kcal</p>
+            <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
+              <div className="grid size-20 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                {foodPhotoDataUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={foodPhotoDataUrl} alt="" className="size-full object-cover" />
+                ) : (
+                  <ImagePlus className="size-6 text-muted-foreground" aria-hidden="true" />
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-sm font-medium transition-colors hover:bg-white/10">
+                  <ImagePlus className="size-4" aria-hidden="true" />
+                  {foodPhotoDataUrl ? "Change photo" : "Add photo (optional)"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    onChange={handleFoodPhotoChange}
+                  />
+                </label>
+                {foodPhotoDataUrl ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setFoodPhotoDataUrl("");
+                    }}
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+
+            {foodFormError ? <p className="text-sm text-destructive">{foodFormError}</p> : null}
+            <Button type="submit" className="w-full sm:w-auto">
+              <Save className="size-4" aria-hidden="true" />
+              Save food
+            </Button>
+          </form>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6 lg:col-span-1">
+          <div className="flex items-center gap-3">
+            <div className="bg-white/8 grid size-10 place-items-center rounded-full">
+              <Utensils className="size-5 text-primary" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-base font-semibold">{String(selectedFoodPreview.protein)}g</p>
-              <p className="text-[11px] text-muted-foreground">Protein</p>
-            </div>
-            <div>
-              <p className="text-base font-semibold">{String(selectedFoodPreview.carbs)}g</p>
-              <p className="text-[11px] text-muted-foreground">Carbs</p>
-            </div>
-            <div>
-              <p className="text-base font-semibold">{String(selectedFoodPreview.fat)}g</p>
-              <p className="text-[11px] text-muted-foreground">Fat</p>
+              <h2 className="text-lg font-semibold">Meals</h2>
+              <p className="text-sm text-muted-foreground">Save combinations and log them in one tap.</p>
             </div>
           </div>
 
-          <Button
-            type="button"
-            className="mt-4 w-full"
-            onClick={handleLogSelectedFood}
-            disabled={safeSelectedGrams <= 0}
-          >
-            Log {String(safeSelectedGrams)}g
-          </Button>
-        </section>
-      ) : null}
-
-      <section className="rounded-2xl border border-white/10 bg-card/80 p-4">
-        <h2 className="text-lg font-semibold">Import from FatSecret</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Fetch a food by FatSecret id and add its gram-based nutrition to your list.
-        </p>
-
-        <div className="mt-4 grid grid-cols-[1fr_auto] gap-3">
-          <input
-            value={fatSecretFoodId}
-            onChange={(event) => {
-              setFatSecretFoodId(event.target.value);
-            }}
-            inputMode="numeric"
-            placeholder="FatSecret food id"
-            className="h-12 min-w-0 rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
-          />
-          <Button
-            type="button"
-            onClick={() => {
-              void handleImportFatSecretFood();
-            }}
-            disabled={isImportingFatSecretFood}
-          >
-            {isImportingFatSecretFood ? "Importing" : "Import"}
-          </Button>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/10 bg-card/80 p-4">
-        <h2 className="text-lg font-semibold">Add food</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Create foods you eat often with nutrition per 100g.
-        </p>
-
-        <form className="mt-4 space-y-3" onSubmit={handleCreateFood}>
-          <input
-            value={foodForm.name}
-            onChange={(event) => {
-              setFoodForm((form) => ({ ...form, name: event.target.value }));
-            }}
-            placeholder="Food name"
-            className="h-12 w-full rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
-          />
-          <div className="grid grid-cols-2 gap-3">
-            {(["caloriesPer100g", "proteinPer100g", "carbsPer100g", "fatPer100g"] as const).map(
-              (field) => (
-                <input
-                  key={field}
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  inputMode="decimal"
-                  value={foodForm[field]}
-                  onChange={(event) => {
-                    setFoodForm((form) => ({ ...form, [field]: event.target.value }));
-                  }}
-                  placeholder={
-                    field === "caloriesPer100g"
-                      ? "Calories"
-                      : field === "proteinPer100g"
-                        ? "Protein"
-                        : field === "carbsPer100g"
-                          ? "Carbs"
-                          : "Fat"
-                  }
-                  className="h-12 rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
-                />
-              )
+          <div className="mt-4 space-y-3">
+            {savedMeals.length > 0 ? (
+              savedMeals.map((meal) => (
+                <article
+                  key={meal.id}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-background/60 p-3"
+                >
+                  <div>
+                    <h3 className="font-medium">{meal.name}</h3>
+                    <p className="text-xs text-muted-foreground">{String(meal.items.length)} foods</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      handleLogMeal(meal);
+                    }}
+                  >
+                    Log
+                  </Button>
+                </article>
+              ))
+            ) : (
+              <p className="rounded-xl bg-background/60 p-4 text-sm text-muted-foreground">
+                No saved meals yet.
+              </p>
             )}
           </div>
-          {foodFormError ? <p className="text-sm text-destructive">{foodFormError}</p> : null}
-          <Button type="submit" className="w-full">
-            <Save className="size-4" aria-hidden="true" />
-            Save food
-          </Button>
-        </form>
-      </section>
 
-      <section className="rounded-2xl border border-white/10 bg-card/80 p-4">
-        <div className="flex items-center gap-3">
-          <div className="bg-white/8 grid size-10 place-items-center rounded-full">
-            <Utensils className="size-5 text-primary" aria-hidden="true" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold">Meals</h2>
-            <p className="text-sm text-muted-foreground">
-              Save combinations and log them in one tap.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {savedMeals.length > 0 ? (
-            savedMeals.map((meal) => (
-              <article
-                key={meal.id}
-                className="flex items-center justify-between gap-3 rounded-xl bg-background/60 p-3"
-              >
-                <div>
-                  <h3 className="font-medium">{meal.name}</h3>
-                  <p className="text-xs text-muted-foreground">{String(meal.items.length)} foods</p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    handleLogMeal(meal);
-                  }}
-                >
-                  Log
-                </Button>
-              </article>
-            ))
-          ) : (
-            <p className="rounded-xl bg-background/60 p-4 text-sm text-muted-foreground">
-              No saved meals yet.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-5 space-y-3 border-t border-white/10 pt-4">
-          <input
-            value={mealName}
-            onChange={(event) => {
-              setMealName(event.target.value);
-            }}
-            placeholder="Meal name"
-            className="h-12 w-full rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
-          />
-          <div className="grid grid-cols-[1fr_88px] gap-3">
-            <select
-              value={mealFoodId}
-              onChange={(event) => {
-                setMealFoodId(event.target.value);
-              }}
-              className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none"
-            >
-              {foods.map((food) => (
-                <option key={food.id} value={food.id}>
-                  {food.name}
-                </option>
-              ))}
-            </select>
+          <div className="mt-5 space-y-3 border-t border-white/10 pt-4">
             <input
-              type="number"
-              min="1"
-              step="0.1"
-              inputMode="decimal"
-              value={mealGrams}
+              value={mealName}
               onChange={(event) => {
-                setMealGrams(Number(event.target.value));
+                setMealName(event.target.value);
               }}
-              aria-label="Meal food grams"
-              className="h-12 rounded-xl border border-white/10 bg-background/70 px-3 text-right outline-none"
+              placeholder="Meal name"
+              className="h-12 w-full rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
             />
-          </div>
-
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={handleAddMealBuilderItem}
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              Add item
-            </Button>
-            <Button type="button" className="flex-1" onClick={handleSaveMeal}>
-              Save meal
-            </Button>
-          </div>
-
-          {mealBuilderItems.length > 0 ? (
-            <div className="space-y-2">
-              {mealBuilderItems.map((item, index) => {
-                const food = foods.find((candidate) => candidate.id === item.foodId);
-                const label = food?.name ?? "Unknown food";
-
-                return (
-                  <div
-                    key={`${item.foodId}-${String(index)}`}
-                    className="rounded-xl bg-background/60 px-3 py-2 text-sm"
-                  >
-                    {label} - {String(item.grams)}g
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-[1fr_88px] gap-3">
+              <select
+                value={mealFoodId}
+                onChange={(event) => {
+                  setMealFoodId(event.target.value);
+                }}
+                className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none"
+              >
+                {foods.map((food) => (
+                  <option key={food.id} value={food.id}>
+                    {food.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="1"
+                step="0.1"
+                inputMode="decimal"
+                value={mealGrams}
+                onChange={(event) => {
+                  setMealGrams(Number(event.target.value));
+                }}
+                aria-label="Meal food grams"
+                className="h-12 rounded-xl border border-white/10 bg-background/70 px-3 text-right outline-none"
+              />
             </div>
-          ) : null}
-        </div>
-      </section>
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={handleAddMealBuilderItem}
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                Add item
+              </Button>
+              <Button type="button" className="flex-1" onClick={handleSaveMeal}>
+                Save meal
+              </Button>
+            </div>
+
+            {mealBuilderItems.length > 0 ? (
+              <div className="space-y-2">
+                {mealBuilderItems.map((item, index) => {
+                  const food = foods.find((candidate) => candidate.id === item.foodId);
+                  const label = food?.name ?? "Unknown food";
+
+                  return (
+                    <div
+                      key={`${item.foodId}-${String(index)}`}
+                      className="rounded-xl bg-background/60 px-3 py-2 text-sm"
+                    >
+                      {label} - {String(item.grams)}g
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
