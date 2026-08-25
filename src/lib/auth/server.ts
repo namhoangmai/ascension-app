@@ -206,6 +206,12 @@ export async function signInWithGoogle() {
   await signIn("google", { redirectTo: "/dashboard" });
 }
 
+export async function signInWithFacebook() {
+  "use server";
+
+  await signIn("facebook", { redirectTo: "/dashboard" });
+}
+
 export async function signOutCurrentUser() {
   "use server";
 

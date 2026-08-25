@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { AuthCard } from "../_components/auth-card";
-import { GoogleButton } from "../_components/oauth-button";
+import { FacebookButton, GoogleButton } from "../_components/oauth-button";
 import { SignInForm } from "../_components/sign-in-form";
 
 export default function SignInPage() {
@@ -13,6 +13,7 @@ export default function SignInPage() {
     >
       <div className="space-y-4">
         <GoogleButton />
+        <FacebookButton />
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="h-px flex-1 bg-white/10" />
           or

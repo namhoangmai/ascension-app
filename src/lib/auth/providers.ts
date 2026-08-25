@@ -1,6 +1,7 @@
 import { verify } from "argon2";
 import type { Provider } from "next-auth/providers";
 import Credentials from "next-auth/providers/credentials";
+import Facebook from "next-auth/providers/facebook";
 import Google from "next-auth/providers/google";
 
 import { prisma } from "@/lib/db/prisma";
@@ -11,6 +12,9 @@ import { signInSchema } from "./validation";
 export function getAuthProviders() {
   const googleClientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
   const googleClientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
+  const facebookClientId = process.env.AUTH_FACEBOOK_ID ?? process.env.FACEBOOK_CLIENT_ID;
+  const facebookClientSecret =
+    process.env.AUTH_FACEBOOK_SECRET ?? process.env.FACEBOOK_CLIENT_SECRET;
   const providers: Provider[] = [
     Credentials({
       name: "Email and password",
@@ -73,6 +77,16 @@ export function getAuthProviders() {
       Google({
         clientId: googleClientId,
         clientSecret: googleClientSecret,
+        allowDangerousEmailAccountLinking: true
+      })
+    );
+  }
+
+  if (facebookClientId && facebookClientSecret) {
+    providers.push(
+      Facebook({
+        clientId: facebookClientId,
+        clientSecret: facebookClientSecret,
         allowDangerousEmailAccountLinking: true
       })
     );

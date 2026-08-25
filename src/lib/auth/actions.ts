@@ -3,6 +3,7 @@
 import {
   requestPasswordReset,
   resetPassword,
+  signInWithFacebook,
   signInWithGoogle,
   signInWithPassword,
   signOutCurrentUser,
@@ -31,6 +32,10 @@ export async function resetPasswordAction(previousState: AuthActionState, formDa
 
 export async function signInWithGoogleAction() {
   return signInWithGoogle();
+}
+
+export async function signInWithFacebookAction() {
+  return signInWithFacebook();
 }
 
 export async function signOutCurrentUserAction() {
