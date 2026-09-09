@@ -18,3 +18,9 @@ public/worker-*.js
 
 # Obsidian vault (contains Local REST API private key)
 vault-ascension/
+
+AGENTS.md 
+ARCHITECTURE-ESSENTIALS.md
+ARCHITECTURE.md 
+CLAUDE.md 
+PRD.md

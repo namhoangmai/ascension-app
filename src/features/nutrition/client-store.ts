@@ -1,5 +1,7 @@
 import type {
+  FoodCategory,
   FoodDatabaseItem,
+  FoodOverride,
   NutritionLogItem,
   NutritionMacroGoals,
   SavedMealItem
@@ -9,6 +11,50 @@ export const FOOD_LOG_STORAGE_KEY = "nutrition.foodLog.v2";
 export const FOOD_DATABASE_STORAGE_KEY = "nutrition.foodDatabase.v2";
 export const SAVED_MEALS_STORAGE_KEY = "nutrition.savedMeals.v1";
 export const NUTRITION_GOALS_STORAGE_KEY = "nutrition.macroGoals.v1";
+export const FOOD_OVERRIDES_STORAGE_KEY = "nutrition.foodOverrides.v1";
+export const DELETED_FOOD_IDS_STORAGE_KEY = "nutrition.deletedFoodIds.v1";
+
+export const FOOD_CATEGORIES: { id: FoodCategory; label: string }[] = [
+  { id: "carbs", label: "Carbs" },
+  { id: "meat", label: "Meat" },
+  { id: "dairy", label: "Dairy" },
+  { id: "vegetables", label: "Vegetables" },
+  { id: "fruits", label: "Fruit" },
+  { id: "snacks", label: "Snacks" },
+  { id: "beverages", label: "Beverages" },
+  { id: "supplements", label: "Supplements" },
+  { id: "sauces", label: "Sauces" },
+  { id: "other", label: "Other" }
+];
+
+export const DEFAULT_FOOD_CATEGORY: FoodCategory = "other";
+
+const FOOD_CATEGORY_IDS = new Set(FOOD_CATEGORIES.map((category) => category.id));
+
+export function isFoodCategory(value: unknown): value is FoodCategory {
+  return typeof value === "string" && FOOD_CATEGORY_IDS.has(value as FoodCategory);
+}
+
+export function isFoodOverride(value: unknown): value is FoodOverride {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const override = value as Partial<FoodOverride>;
+
+  return (
+    typeof override.name === "string" &&
+    isFoodCategory(override.category) &&
+    typeof override.caloriesPer100g === "number" &&
+    typeof override.proteinPer100g === "number" &&
+    typeof override.carbsPer100g === "number" &&
+    typeof override.fatPer100g === "number"
+  );
+}
+
+export function applyFoodOverride(food: FoodDatabaseItem, override?: FoodOverride): FoodDatabaseItem {
+  return override ? { ...food, ...override } : food;
+}
 
 export const CALORIES_PER_GRAM = {
   carbs: 4,
@@ -31,6 +77,7 @@ export const DEFAULT_MACRO_GOALS: NutritionMacroGoals = {
 export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   {
     id: "nl-magere-kwark",
+    category: "dairy",
     name: "Magere kwark",
     caloriesPer100g: 54,
     proteinPer100g: 10,
@@ -41,6 +88,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-volkoren-brood",
+    category: "carbs",
     name: "Volkoren brood",
     caloriesPer100g: 235,
     proteinPer100g: 9,
@@ -51,6 +99,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-pindakaas",
+    category: "snacks",
     name: "Pindakaas",
     caloriesPer100g: 625,
     proteinPer100g: 26,
@@ -61,6 +110,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-kaas-48",
+    category: "dairy",
     name: "Goudse kaas 48+",
     caloriesPer100g: 356,
     proteinPer100g: 25,
@@ -71,6 +121,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-kipfilet",
+    category: "meat",
     name: "Kipfilet",
     caloriesPer100g: 110,
     proteinPer100g: 23,
@@ -81,6 +132,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-zilvervliesrijst",
+    category: "carbs",
     name: "Zilvervliesrijst gekookt",
     caloriesPer100g: 123,
     proteinPer100g: 2.6,
@@ -91,6 +143,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-aardappel",
+    category: "carbs",
     name: "Aardappel gekookt",
     caloriesPer100g: 83,
     proteinPer100g: 1.9,
@@ -101,6 +154,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-havermout",
+    category: "carbs",
     name: "Havermout",
     caloriesPer100g: 371,
     proteinPer100g: 13,
@@ -111,6 +165,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-halfvolle-melk",
+    category: "dairy",
     name: "Halfvolle melk",
     caloriesPer100g: 47,
     proteinPer100g: 3.5,
@@ -121,6 +176,7 @@ export const DUTCH_FOOD_DATABASE: FoodDatabaseItem[] = [
   },
   {
     id: "nl-ei",
+    category: "meat",
     name: "Ei",
     caloriesPer100g: 143,
     proteinPer100g: 13,
@@ -167,6 +223,68 @@ export function isFoodDatabaseItem(value: unknown): value is FoodDatabaseItem {
     typeof item.fatPer100g === "number" &&
     typeof item.createdAt === "number"
   );
+}
+
+export function normalizeFoodDatabaseItem(item: FoodDatabaseItem): FoodDatabaseItem {
+  return isFoodCategory(item.category) ? item : { ...item, category: DEFAULT_FOOD_CATEGORY };
+}
+
+export function readCustomFoods(): FoodDatabaseItem[] {
+  try {
+    const raw = localStorage.getItem(FOOD_DATABASE_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(isFoodDatabaseItem).map(normalizeFoodDatabaseItem);
+  } catch {
+    return [];
+  }
+}
+
+export function readFoodOverrides(): Record<string, FoodOverride> {
+  try {
+    const raw = localStorage.getItem(FOOD_OVERRIDES_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => isFoodOverride(value))
+    ) as Record<string, FoodOverride>;
+  } catch {
+    return {};
+  }
+}
+
+export function readDeletedFoodIds(): string[] {
+  try {
+    const raw = localStorage.getItem(DELETED_FOOD_IDS_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((id): id is string => typeof id === "string");
+  } catch {
+    return [];
+  }
+}
+
+export function readFoodCatalog(): FoodDatabaseItem[] {
+  const overrides = readFoodOverrides();
+  const deletedIds = readDeletedFoodIds();
+
+  const builtInFoods = DUTCH_FOOD_DATABASE.filter((food) => !deletedIds.includes(food.id)).map(
+    (food) => applyFoodOverride(food, overrides[food.id])
+  );
+
+  return [...builtInFoods, ...readCustomFoods()];
 }
 
 export function isSavedMealItem(value: unknown): value is SavedMealItem {

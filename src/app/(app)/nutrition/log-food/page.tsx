@@ -3,23 +3,32 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type Route } from "next";
-import { ArrowLeft, ImagePlus, Plus, Save, Utensils, X } from "lucide-react";
+import { ArrowLeft, ImagePlus, Pencil, Plus, Save, Trash2, Utensils, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ChangeEvent, type SyntheticEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  applyFoodOverride,
   calculateLogItem,
+  DEFAULT_FOOD_CATEGORY,
+  DELETED_FOOD_IDS_STORAGE_KEY,
   DUTCH_FOOD_DATABASE,
+  FOOD_CATEGORIES,
   FOOD_DATABASE_STORAGE_KEY,
   FOOD_LOG_STORAGE_KEY,
+  FOOD_OVERRIDES_STORAGE_KEY,
   getDateKey,
-  isFoodDatabaseItem,
   isNutritionLogItem,
   isSavedMealItem,
+  readCustomFoods,
+  readDeletedFoodIds,
+  readFoodOverrides,
   SAVED_MEALS_STORAGE_KEY
 } from "@/features/nutrition/client-store";
 import type {
+  FoodCategory,
   FoodDatabaseItem,
+  FoodOverride,
   NutritionLogItem,
   SavedMealFood,
   SavedMealItem
@@ -29,6 +38,7 @@ const DEFAULT_GRAMS = 100;
 
 interface FoodFormState {
   name: string;
+  category: FoodCategory;
   caloriesPer100g: string;
   proteinPer100g: string;
   carbsPer100g: string;
@@ -37,26 +47,12 @@ interface FoodFormState {
 
 const EMPTY_FOOD_FORM: FoodFormState = {
   name: "",
+  category: DEFAULT_FOOD_CATEGORY,
   caloriesPer100g: "",
   proteinPer100g: "",
   carbsPer100g: "",
   fatPer100g: ""
 };
-
-function readFoodDatabase() {
-  try {
-    const raw = localStorage.getItem(FOOD_DATABASE_STORAGE_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter(isFoodDatabaseItem);
-  } catch {
-    return [];
-  }
-}
 
 function readSavedMeals() {
   try {
@@ -110,10 +106,15 @@ export default function LogFoodPage() {
   const nutritionHref = `/nutrition?date=${dateKey}` as Route;
 
   const [customFoods, setCustomFoods] = useState<FoodDatabaseItem[]>([]);
+  const [foodOverrides, setFoodOverrides] = useState<Record<string, FoodOverride>>({});
+  const [deletedFoodIds, setDeletedFoodIds] = useState<string[]>([]);
   const [savedMeals, setSavedMeals] = useState<SavedMealItem[]>([]);
   const [foodForm, setFoodForm] = useState<FoodFormState>(EMPTY_FOOD_FORM);
   const [foodFormError, setFoodFormError] = useState<string | null>(null);
   const [foodPhotoDataUrl, setFoodPhotoDataUrl] = useState("");
+  const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<FoodFormState>(EMPTY_FOOD_FORM);
+  const [editFormError, setEditFormError] = useState<string | null>(null);
   const [mealName, setMealName] = useState("");
   const [mealFoodId, setMealFoodId] = useState(DUTCH_FOOD_DATABASE[0]?.id ?? "");
   const [mealGrams, setMealGrams] = useState(DEFAULT_GRAMS);
@@ -121,11 +122,36 @@ export default function LogFoodPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setCustomFoods(readFoodDatabase());
+    setCustomFoods(readCustomFoods());
+    setFoodOverrides(readFoodOverrides());
+    setDeletedFoodIds(readDeletedFoodIds());
     setSavedMeals(readSavedMeals());
   }, []);
 
-  const foods = useMemo(() => [...DUTCH_FOOD_DATABASE, ...customFoods], [customFoods]);
+  const foods = useMemo(() => {
+    const builtInFoods = DUTCH_FOOD_DATABASE.filter((food) => !deletedFoodIds.includes(food.id)).map(
+      (food) => applyFoodOverride(food, foodOverrides[food.id])
+    );
+
+    return [...builtInFoods, ...customFoods];
+  }, [customFoods, foodOverrides, deletedFoodIds]);
+
+  useEffect(() => {
+    setMealFoodId((currentId) => {
+      if (foods.some((food) => food.id === currentId)) {
+        return currentId;
+      }
+
+      return foods[0]?.id ?? "";
+    });
+  }, [foods]);
+
+  const foodsByCategory = useMemo(() => {
+    return FOOD_CATEGORIES.map((category) => ({
+      ...category,
+      foods: foods.filter((food) => food.category === category.id)
+    }));
+  }, [foods]);
 
   function persistLogs(items: NutritionLogItem[]) {
     const logsByDate = readLogsByDate();
@@ -175,6 +201,7 @@ export default function LogFoodPage() {
     const customFood: FoodDatabaseItem = {
       id: `custom-${crypto.randomUUID()}`,
       name,
+      category: foodForm.category,
       caloriesPer100g,
       proteinPer100g,
       carbsPer100g,
@@ -191,6 +218,111 @@ export default function LogFoodPage() {
     setFoodFormError(null);
     setFoodPhotoDataUrl("");
     setStatusMessage(`${name} added to your food database.`);
+  }
+
+  function handleStartEditFood(food: FoodDatabaseItem) {
+    setEditingFoodId(food.id);
+    setEditFormError(null);
+    setEditForm({
+      name: food.name,
+      category: food.category,
+      caloriesPer100g: String(food.caloriesPer100g),
+      proteinPer100g: String(food.proteinPer100g),
+      carbsPer100g: String(food.carbsPer100g),
+      fatPer100g: String(food.fatPer100g)
+    });
+  }
+
+  function handleCancelEditFood() {
+    setEditingFoodId(null);
+    setEditForm(EMPTY_FOOD_FORM);
+    setEditFormError(null);
+  }
+
+  function handleSaveEditFood(event: SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editingFoodId) {
+      return;
+    }
+
+    const caloriesPer100g = parseMacroValue(editForm.caloriesPer100g);
+    const proteinPer100g = parseMacroValue(editForm.proteinPer100g);
+    const carbsPer100g = parseMacroValue(editForm.carbsPer100g);
+    const fatPer100g = parseMacroValue(editForm.fatPer100g);
+    const name = editForm.name.trim();
+
+    if (
+      !name ||
+      caloriesPer100g === null ||
+      proteinPer100g === null ||
+      carbsPer100g === null ||
+      fatPer100g === null
+    ) {
+      setEditFormError("Fill every field with valid nutrition values.");
+      return;
+    }
+
+    const updatedFields: FoodOverride = {
+      name,
+      category: editForm.category,
+      caloriesPer100g,
+      proteinPer100g,
+      carbsPer100g,
+      fatPer100g
+    };
+
+    const isCustomFood = customFoods.some((food) => food.id === editingFoodId);
+
+    if (isCustomFood) {
+      const nextCustomFoods = customFoods.map((food) =>
+        food.id === editingFoodId ? { ...food, ...updatedFields } : food
+      );
+
+      setCustomFoods(nextCustomFoods);
+      localStorage.setItem(FOOD_DATABASE_STORAGE_KEY, JSON.stringify(nextCustomFoods));
+    } else {
+      const nextFoodOverrides = { ...foodOverrides, [editingFoodId]: updatedFields };
+
+      setFoodOverrides(nextFoodOverrides);
+      localStorage.setItem(FOOD_OVERRIDES_STORAGE_KEY, JSON.stringify(nextFoodOverrides));
+    }
+
+    setStatusMessage(`${name} updated.`);
+    handleCancelEditFood();
+  }
+
+  function handleDeleteFood(foodId: string) {
+    const food = foods.find((candidate) => candidate.id === foodId);
+    const isCustomFood = customFoods.some((candidate) => candidate.id === foodId);
+
+    if (isCustomFood) {
+      const nextCustomFoods = customFoods.filter((candidate) => candidate.id !== foodId);
+
+      setCustomFoods(nextCustomFoods);
+      localStorage.setItem(FOOD_DATABASE_STORAGE_KEY, JSON.stringify(nextCustomFoods));
+    } else {
+      const nextDeletedFoodIds = deletedFoodIds.includes(foodId)
+        ? deletedFoodIds
+        : [...deletedFoodIds, foodId];
+
+      setDeletedFoodIds(nextDeletedFoodIds);
+      localStorage.setItem(DELETED_FOOD_IDS_STORAGE_KEY, JSON.stringify(nextDeletedFoodIds));
+
+      if (foodId in foodOverrides) {
+        const nextFoodOverrides = { ...foodOverrides };
+        delete nextFoodOverrides[foodId];
+
+        setFoodOverrides(nextFoodOverrides);
+        localStorage.setItem(FOOD_OVERRIDES_STORAGE_KEY, JSON.stringify(nextFoodOverrides));
+      }
+    }
+
+    if (editingFoodId === foodId) {
+      handleCancelEditFood();
+    }
+
+    setStatusMessage(food ? `${food.name} removed from your food database.` : "Food removed.");
   }
 
   function handleAddMealBuilderItem() {
@@ -290,6 +422,23 @@ export default function LogFoodPage() {
               placeholder="Food name"
               className="h-12 w-full rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
             />
+            <select
+              value={foodForm.category}
+              onChange={(event) => {
+                setFoodForm((form) => ({
+                  ...form,
+                  category: event.target.value as FoodCategory
+                }));
+              }}
+              aria-label="Food category"
+              className="h-12 w-full rounded-xl border border-white/10 bg-background px-4 outline-none"
+            >
+              {FOOD_CATEGORIES.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(["caloriesPer100g", "proteinPer100g", "carbsPer100g", "fatPer100g"] as const).map(
                 (field) => (
@@ -474,6 +623,152 @@ export default function LogFoodPage() {
           </div>
         </section>
       </div>
+
+      <section className="rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6">
+        <h2 className="text-lg font-semibold">Food database</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Every food, grouped by category. Scroll within a column to see more.
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {foodsByCategory.map((category) => (
+            <div
+              key={category.id}
+              className="flex flex-col rounded-xl border border-white/10 bg-background/60"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
+                <h3 className="text-sm font-semibold">{category.label}</h3>
+                <span className="text-xs text-muted-foreground">{String(category.foods.length)}</span>
+              </div>
+              <div className="max-h-64 space-y-1 overflow-y-auto p-2">
+                {category.foods.length > 0 ? (
+                  category.foods.map((food) => {
+                    const isEditing = editingFoodId === food.id;
+
+                    if (isEditing) {
+                      return (
+                        <form
+                          key={food.id}
+                          onSubmit={handleSaveEditFood}
+                          className="space-y-2 rounded-lg border border-primary/30 bg-white/5 p-2"
+                        >
+                          <input
+                            value={editForm.name}
+                            onChange={(event) => {
+                              setEditForm((form) => ({ ...form, name: event.target.value }));
+                            }}
+                            placeholder="Food name"
+                            className="h-9 w-full rounded-lg border border-white/10 bg-background/70 px-2 text-xs outline-none"
+                          />
+                          <select
+                            value={editForm.category}
+                            onChange={(event) => {
+                              setEditForm((form) => ({
+                                ...form,
+                                category: event.target.value as FoodCategory
+                              }));
+                            }}
+                            aria-label="Food category"
+                            className="h-9 w-full rounded-lg border border-white/10 bg-background px-2 text-xs outline-none"
+                          >
+                            {FOOD_CATEGORIES.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {(
+                              ["caloriesPer100g", "proteinPer100g", "carbsPer100g", "fatPer100g"] as const
+                            ).map((field) => (
+                              <input
+                                key={field}
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                inputMode="decimal"
+                                value={editForm[field]}
+                                onChange={(event) => {
+                                  setEditForm((form) => ({ ...form, [field]: event.target.value }));
+                                }}
+                                placeholder={
+                                  field === "caloriesPer100g"
+                                    ? "kcal"
+                                    : field === "proteinPer100g"
+                                      ? "Protein"
+                                      : field === "carbsPer100g"
+                                        ? "Carbs"
+                                        : "Fat"
+                                }
+                                className="h-9 rounded-lg border border-white/10 bg-background/70 px-2 text-xs outline-none"
+                              />
+                            ))}
+                          </div>
+                          {editFormError ? (
+                            <p className="text-xs text-destructive">{editFormError}</p>
+                          ) : null}
+                          <div className="flex gap-2">
+                            <Button type="submit" size="sm" className="h-8 flex-1 text-xs">
+                              Save
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 flex-1 text-xs"
+                              onClick={handleCancelEditFood}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </form>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={food.id}
+                        className="flex items-start justify-between gap-2 rounded-lg bg-white/5 px-2.5 py-2 text-xs leading-snug"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-foreground">{food.name}</p>
+                          <p className="text-muted-foreground">
+                            {String(food.caloriesPer100g)} kcal / 100g
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Edit ${food.name}`}
+                            onClick={() => {
+                              handleStartEditFood(food);
+                            }}
+                            className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+                          >
+                            <Pencil className="size-3.5" aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Delete ${food.name}`}
+                            onClick={() => {
+                              handleDeleteFood(food.id);
+                            }}
+                            className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 className="size-3.5" aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="px-1 py-2 text-xs text-muted-foreground">No foods yet.</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

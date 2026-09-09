@@ -4,20 +4,31 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CalendarDays, Plus } from "lucide-react";
 import { type Route } from "next";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type SyntheticEvent } from "react";
 
+import { Button } from "@/components/ui/button";
 import FoodLogList from "@/components/nutrition/food-log-list";
 import {
+  calculateLogItem,
   DEFAULT_MACRO_GOALS,
+  FOOD_CATEGORIES,
   FOOD_LOG_STORAGE_KEY,
   NUTRITION_GOALS_STORAGE_KEY,
   getDateKey,
   getCaloriesFromMacroGoals,
   getItemCalories,
   isNutritionMacroGoals,
-  isNutritionLogItem
+  isNutritionLogItem,
+  readFoodCatalog
 } from "@/features/nutrition/client-store";
-import type { NutritionLogItem, NutritionMacroGoals } from "@/types/nutrition";
+import type {
+  FoodCategory,
+  FoodDatabaseItem,
+  NutritionLogItem,
+  NutritionMacroGoals
+} from "@/types/nutrition";
+
+const DEFAULT_LOG_GRAMS = 100;
 
 type MacroKey = keyof NutritionMacroGoals;
 
@@ -98,13 +109,61 @@ export default function NutritionPage() {
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [logsByDate, setLogsByDate] = useState<Record<string, NutritionLogItem[]>>({});
   const [macroGoals, setMacroGoals] = useState<NutritionMacroGoals>(DEFAULT_MACRO_GOALS);
+  const [foodCatalog, setFoodCatalog] = useState<FoodDatabaseItem[]>([]);
+  const [logCategory, setLogCategory] = useState<FoodCategory | "">("");
+  const [logFoodId, setLogFoodId] = useState("");
+  const [logGrams, setLogGrams] = useState<number | "">(DEFAULT_LOG_GRAMS);
+  const [logStatus, setLogStatus] = useState<string | null>(null);
 
   useEffect(() => {
     setLogsByDate(getLogsByDate());
     setMacroGoals(getStoredMacroGoals());
+    setFoodCatalog(readFoodCatalog());
   }, []);
 
   const logs = useMemo(() => logsByDate[selectedDate] ?? [], [logsByDate, selectedDate]);
+
+  const foodCatalogByCategory = useMemo(() => {
+    return FOOD_CATEGORIES.map((category) => ({
+      ...category,
+      foods: foodCatalog.filter((food) => food.category === category.id)
+    })).filter((category) => category.foods.length > 0);
+  }, [foodCatalog]);
+
+  useEffect(() => {
+    setLogCategory((currentCategory) => {
+      if (foodCatalogByCategory.some((category) => category.id === currentCategory)) {
+        return currentCategory;
+      }
+
+      return foodCatalogByCategory[0]?.id ?? "";
+    });
+  }, [foodCatalogByCategory]);
+
+  const logCategoryFoods = useMemo(
+    () => foodCatalogByCategory.find((category) => category.id === logCategory)?.foods ?? [],
+    [foodCatalogByCategory, logCategory]
+  );
+
+  useEffect(() => {
+    setLogFoodId((currentId) => {
+      if (logCategoryFoods.some((food) => food.id === currentId)) {
+        return currentId;
+      }
+
+      return logCategoryFoods[0]?.id ?? "";
+    });
+  }, [logCategoryFoods]);
+
+  const selectedLogFood = useMemo(
+    () => foodCatalog.find((food) => food.id === logFoodId) ?? null,
+    [foodCatalog, logFoodId]
+  );
+
+  const logPreviewCalories =
+    selectedLogFood && typeof logGrams === "number" && logGrams > 0
+      ? Math.round((selectedLogFood.caloriesPer100g * logGrams) / 100)
+      : null;
 
   const totalConsumed = useMemo(
     () => logs.reduce((sum, item) => sum + getItemCalories(item), 0),
@@ -137,6 +196,37 @@ export default function NutritionPage() {
       localStorage.setItem(FOOD_LOG_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
+  }
+
+  function handleQuickLogFood(event: SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const food = foodCatalog.find((candidate) => candidate.id === logFoodId);
+    const grams = typeof logGrams === "number" ? logGrams : Number(logGrams);
+
+    if (!food) {
+      setLogStatus("Choose a food to log.");
+      return;
+    }
+
+    if (!Number.isFinite(grams) || grams <= 0) {
+      setLogStatus("Enter a valid amount in grams.");
+      return;
+    }
+
+    const logItem = calculateLogItem(food, grams);
+
+    setLogsByDate((currentLogsByDate) => {
+      const next = {
+        ...currentLogsByDate,
+        [selectedDate]: [...(currentLogsByDate[selectedDate] ?? []), logItem]
+      };
+      localStorage.setItem(FOOD_LOG_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+
+    setLogStatus(`Logged ${String(grams)}g of ${food.name} (${String(logItem.calories)} kcal).`);
+    setLogGrams(DEFAULT_LOG_GRAMS);
   }
 
   function handleMacroGoalChange(key: MacroKey, value: number) {
@@ -233,13 +323,83 @@ export default function NutritionPage() {
         </div>
       </section>
 
+      <section className="rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6">
+        <h2 className="text-lg font-semibold">Log food</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Pick a food from your database and enter how many grams you ate.
+        </p>
+
+        <form className="mt-4 space-y-3" onSubmit={handleQuickLogFood}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,160px)_1fr_120px]">
+            <select
+              value={logCategory}
+              onChange={(event) => {
+                setLogCategory(event.target.value as FoodCategory);
+              }}
+              aria-label="Food category"
+              className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none"
+            >
+              {foodCatalogByCategory.length === 0 ? <option value="">No categories yet</option> : null}
+              {foodCatalogByCategory.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={logFoodId}
+              onChange={(event) => {
+                setLogFoodId(event.target.value);
+              }}
+              aria-label="Food to log"
+              disabled={logCategoryFoods.length === 0}
+              className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none disabled:opacity-50"
+            >
+              {logCategoryFoods.length === 0 ? <option value="">No foods in this category</option> : null}
+              {logCategoryFoods.map((food) => (
+                <option key={food.id} value={food.id}>
+                  {food.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="1"
+              step="0.1"
+              inputMode="decimal"
+              value={logGrams}
+              onChange={(event) => {
+                setLogGrams(event.target.value === "" ? "" : Number(event.target.value));
+              }}
+              aria-label="Amount in grams"
+              placeholder="Grams"
+              className="h-12 rounded-xl border border-white/10 bg-background/70 px-3 text-right outline-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              {logPreviewCalories !== null
+                ? `≈ ${String(logPreviewCalories)} kcal`
+                : "Enter an amount to preview calories"}
+            </p>
+            <Button type="submit" disabled={foodCatalog.length === 0}>
+              <Plus className="size-4" aria-hidden="true" />
+              Log food
+            </Button>
+          </div>
+
+          {logStatus ? <p className="text-sm text-primary">{logStatus}</p> : null}
+        </form>
+      </section>
+
       <div className="flex justify-center">
         <Link
           href={logFoodHref}
-          className="grid size-16 place-items-center rounded-full bg-primary text-primary-foreground shadow-glow transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Log food"
+          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
         >
-          <Plus className="size-8" aria-hidden="true" />
+          <Plus className="size-4" aria-hidden="true" />
+          Add a new food or saved meal
         </Link>
       </div>
 

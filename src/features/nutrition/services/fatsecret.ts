@@ -1,3 +1,4 @@
+import { DEFAULT_FOOD_CATEGORY } from "@/features/nutrition/client-store";
 import type { FoodDatabaseItem } from "@/types/nutrition";
 
 const FATSECRET_FOOD_URL = "https://platform.fatsecret.com/rest/food/v5";
@@ -119,6 +120,7 @@ function normalizeFatSecretFood(food: FatSecretFood): FoodDatabaseItem {
     id: `fatsecret-${foodId}`,
     externalId: foodId,
     name,
+    category: DEFAULT_FOOD_CATEGORY,
     caloriesPer100g: normalizePer100g(calories, grams),
     proteinPer100g: normalizePer100g(protein, grams),
     carbsPer100g: normalizePer100g(carbs, grams),

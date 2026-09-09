@@ -10,12 +10,25 @@ export interface NutritionLogItem {
   createdAt: number;
 }
 
+export type FoodCategory =
+  | "meat"
+  | "vegetables"
+  | "fruits"
+  | "carbs"
+  | "dairy"
+  | "snacks"
+  | "beverages"
+  | "supplements"
+  | "sauces"
+  | "other";
+
 export interface FoodDatabaseItem {
   id: string;
   externalId?: string;
   servingId?: string;
   name: string;
   brand?: string;
+  category: FoodCategory;
   caloriesPer100g: number;
   proteinPer100g: number;
   carbsPer100g: number;
@@ -24,6 +37,11 @@ export interface FoodDatabaseItem {
   source?: "netherlands" | "custom" | "fatsecret";
   imageUrl?: string;
 }
+
+export type FoodOverride = Pick<
+  FoodDatabaseItem,
+  "name" | "category" | "caloriesPer100g" | "proteinPer100g" | "carbsPer100g" | "fatPer100g"
+>;
 
 export interface SavedMealFood {
   foodId: string;
