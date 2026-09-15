@@ -9,7 +9,7 @@ interface StatTileProps {
   label: string;
   value: string;
   sub?: string;
-  progress?: number;
+  progress?: number | undefined;
   href?: Route;
 }
 
