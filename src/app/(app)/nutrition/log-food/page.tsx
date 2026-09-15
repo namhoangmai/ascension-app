@@ -310,8 +310,9 @@ export default function LogFoodPage() {
       localStorage.setItem(DELETED_FOOD_IDS_STORAGE_KEY, JSON.stringify(nextDeletedFoodIds));
 
       if (foodId in foodOverrides) {
-        const nextFoodOverrides = { ...foodOverrides };
-        delete nextFoodOverrides[foodId];
+        const nextFoodOverrides = Object.fromEntries(
+          Object.entries(foodOverrides).filter(([key]) => key !== foodId)
+        );
 
         setFoodOverrides(nextFoodOverrides);
         localStorage.setItem(FOOD_OVERRIDES_STORAGE_KEY, JSON.stringify(nextFoodOverrides));

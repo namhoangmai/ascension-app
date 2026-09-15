@@ -31,7 +31,9 @@ export function SignUpForm() {
         name="name"
         autoComplete="name"
         value={name}
-        onChange={(event) => setName(event.target.value)}
+        onChange={(event) => {
+          setName(event.target.value);
+        }}
         error={state.fieldErrors?.name}
         required
       />
@@ -41,7 +43,9 @@ export function SignUpForm() {
         type="email"
         autoComplete="email"
         value={email}
-        onChange={(event) => setEmail(event.target.value)}
+        onChange={(event) => {
+          setEmail(event.target.value);
+        }}
         error={state.fieldErrors?.email}
         required
       />
@@ -51,7 +55,9 @@ export function SignUpForm() {
           name="password"
           type="password"
           autoComplete="new-password"
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+          }}
           error={state.fieldErrors?.password}
           required
         />

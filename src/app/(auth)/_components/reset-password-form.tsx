@@ -33,7 +33,9 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
           name="password"
           type="password"
           autoComplete="new-password"
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+          }}
           error={state.fieldErrors?.password}
           required
         />

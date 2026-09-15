@@ -57,8 +57,10 @@ function summarizeWorkout(workout: StrengthWorkout): WorkoutSummary {
     }
   }
 
+  const trimmedName = workout.name?.trim();
+
   return {
-    name: workout.name?.trim() || "Workout",
+    name: trimmedName === undefined || trimmedName === "" ? "Workout" : trimmedName,
     relativeDate: relativeDayLabel(workout.date),
     exerciseCount: workout.exercises.length,
     completedSets,

@@ -256,9 +256,7 @@ export function readFoodOverrides(): Record<string, FoodOverride> {
       return {};
     }
 
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([, value]) => isFoodOverride(value))
-    ) as Record<string, FoodOverride>;
+    return Object.fromEntries(Object.entries(parsed).filter(([, value]) => isFoodOverride(value)));
   } catch {
     return {};
   }

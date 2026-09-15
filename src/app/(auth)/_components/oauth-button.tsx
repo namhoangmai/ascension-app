@@ -1,4 +1,4 @@
-import { Facebook, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { signInWithFacebookAction, signInWithGoogleAction } from "@/lib/auth/actions";
@@ -32,7 +32,7 @@ export function FacebookButton() {
   return (
     <form action={signInWithFacebookAction}>
       <Button type="submit" variant="outline" size="lg" className="w-full" disabled={!isConfigured}>
-        <Facebook className="size-4" aria-hidden="true" />
+        <ShieldCheck className="size-4" aria-hidden="true" />
         {isConfigured ? "Continue with Facebook" : "Facebook login not configured"}
       </Button>
     </form>
