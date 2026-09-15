@@ -13,7 +13,7 @@ public/workbox-*.js
 public/worker-*.js
 
 # Ignore local agent files and caches
-.agents/
+.agent/
 .claude
 
 # Obsidian vault (contains Local REST API private key)
