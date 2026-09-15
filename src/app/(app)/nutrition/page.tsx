@@ -339,7 +339,9 @@ export default function NutritionPage() {
               aria-label="Food category"
               className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none"
             >
-              {foodCatalogByCategory.length === 0 ? <option value="">No categories yet</option> : null}
+              {foodCatalogByCategory.length === 0 ? (
+                <option value="">No categories yet</option>
+              ) : null}
               {foodCatalogByCategory.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.label}
@@ -355,7 +357,9 @@ export default function NutritionPage() {
               disabled={logCategoryFoods.length === 0}
               className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none disabled:opacity-50"
             >
-              {logCategoryFoods.length === 0 ? <option value="">No foods in this category</option> : null}
+              {logCategoryFoods.length === 0 ? (
+                <option value="">No foods in this category</option>
+              ) : null}
               {logCategoryFoods.map((food) => (
                 <option key={food.id} value={food.id}>
                   {food.name}

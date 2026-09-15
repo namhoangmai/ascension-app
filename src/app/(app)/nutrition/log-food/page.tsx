@@ -129,9 +129,9 @@ export default function LogFoodPage() {
   }, []);
 
   const foods = useMemo(() => {
-    const builtInFoods = DUTCH_FOOD_DATABASE.filter((food) => !deletedFoodIds.includes(food.id)).map(
-      (food) => applyFoodOverride(food, foodOverrides[food.id])
-    );
+    const builtInFoods = DUTCH_FOOD_DATABASE.filter(
+      (food) => !deletedFoodIds.includes(food.id)
+    ).map((food) => applyFoodOverride(food, foodOverrides[food.id]));
 
     return [...builtInFoods, ...customFoods];
   }, [customFoods, foodOverrides, deletedFoodIds]);
@@ -518,7 +518,9 @@ export default function LogFoodPage() {
             </div>
             <div>
               <h2 className="text-lg font-semibold">Meals</h2>
-              <p className="text-sm text-muted-foreground">Save combinations and log them in one tap.</p>
+              <p className="text-sm text-muted-foreground">
+                Save combinations and log them in one tap.
+              </p>
             </div>
           </div>
 
@@ -531,7 +533,9 @@ export default function LogFoodPage() {
                 >
                   <div>
                     <h3 className="font-medium">{meal.name}</h3>
-                    <p className="text-xs text-muted-foreground">{String(meal.items.length)} foods</p>
+                    <p className="text-xs text-muted-foreground">
+                      {String(meal.items.length)} foods
+                    </p>
                   </div>
                   <Button
                     type="button"
@@ -638,7 +642,9 @@ export default function LogFoodPage() {
             >
               <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
                 <h3 className="text-sm font-semibold">{category.label}</h3>
-                <span className="text-xs text-muted-foreground">{String(category.foods.length)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {String(category.foods.length)}
+                </span>
               </div>
               <div className="max-h-64 space-y-1 overflow-y-auto p-2">
                 {category.foods.length > 0 ? (
@@ -679,7 +685,12 @@ export default function LogFoodPage() {
                           </select>
                           <div className="grid grid-cols-2 gap-1.5">
                             {(
-                              ["caloriesPer100g", "proteinPer100g", "carbsPer100g", "fatPer100g"] as const
+                              [
+                                "caloriesPer100g",
+                                "proteinPer100g",
+                                "carbsPer100g",
+                                "fatPer100g"
+                              ] as const
                             ).map((field) => (
                               <input
                                 key={field}

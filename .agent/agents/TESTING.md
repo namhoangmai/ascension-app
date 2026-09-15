@@ -11,7 +11,7 @@ features — validates the work of BACKEND and FRONTEND agents.
 - Write and maintain automated tests for code produced by BACKEND and
   FRONTEND agents.
 - Run and interpret `npm run typecheck`, `npm run lint`, `npm run
-  format:check` (bundled as `npm run verify`) for any job handed to it.
+format:check` (bundled as `npm run verify`) for any job handed to it.
 - Flag when a change lacks test coverage it should have, and propose the
   minimal test that would catch a regression.
 - Bootstrap a real test runner for this project (none is configured yet —

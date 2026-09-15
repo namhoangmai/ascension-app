@@ -52,7 +52,10 @@ export function isFoodOverride(value: unknown): value is FoodOverride {
   );
 }
 
-export function applyFoodOverride(food: FoodDatabaseItem, override?: FoodOverride): FoodDatabaseItem {
+export function applyFoodOverride(
+  food: FoodDatabaseItem,
+  override?: FoodOverride
+): FoodDatabaseItem {
   return override ? { ...food, ...override } : food;
 }
 

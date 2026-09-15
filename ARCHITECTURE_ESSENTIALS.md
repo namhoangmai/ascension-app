@@ -4,18 +4,18 @@
 
 ## Tech stack (one line each)
 
-| Choice | Why |
-|---|---|
-| Next.js 15 App Router, React 19 | Server-first rendering, small client bundles |
-| Auth.js v5 beta + `@auth/prisma-adapter` | Stack requirement; isolated behind `src/lib/auth/*` to contain beta risk |
-| JWT sessions | Hard Auth.js v5 constraint for credentials login (no DB sessions) |
-| Argon2id (`argon2`) | Password hashing; `bcryptjs` is installed but **unused** |
-| Prisma 7 + `@prisma/adapter-pg` over `pg` | Driver-adapter style, not the classic query engine |
-| PostgreSQL 16 (Docker locally) | Relational integrity, `Decimal` for nutrition/weight math |
-| Zod + react-hook-form | Auth + profile forms only — not used in Strength/Nutrition/Body stores |
-| Tailwind + shadcn conventions | Dark-first UI system |
-| `zustand` | **Installed, imported nowhere** — no shared client store exists |
-| `next-pwa` | Asset caching/installability only — **no offline write queue** |
+| Choice                                    | Why                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------ |
+| Next.js 15 App Router, React 19           | Server-first rendering, small client bundles                             |
+| Auth.js v5 beta + `@auth/prisma-adapter`  | Stack requirement; isolated behind `src/lib/auth/*` to contain beta risk |
+| JWT sessions                              | Hard Auth.js v5 constraint for credentials login (no DB sessions)        |
+| Argon2id (`argon2`)                       | Password hashing; `bcryptjs` is installed but **unused**                 |
+| Prisma 7 + `@prisma/adapter-pg` over `pg` | Driver-adapter style, not the classic query engine                       |
+| PostgreSQL 16 (Docker locally)            | Relational integrity, `Decimal` for nutrition/weight math                |
+| Zod + react-hook-form                     | Auth + profile forms only — not used in Strength/Nutrition/Body stores   |
+| Tailwind + shadcn conventions             | Dark-first UI system                                                     |
+| `zustand`                                 | **Installed, imported nowhere** — no shared client store exists          |
+| `next-pwa`                                | Asset caching/installability only — **no offline write queue**           |
 
 ## Data model — domain map, not a field list
 
@@ -29,7 +29,7 @@
 
 ## Decisions that would bite someone who didn't know
 
-1. **Strength is a hybrid, not client-only.** Session log (`/strength` list, save, delete) is Prisma-backed via server actions. Templates, the in-progress draft, and the `/strength/exercises/[name]` detail page are still `localStorage`-only — and the detail page reads a *different* localStorage source than the Prisma-backed list, so its PRs/charts are not guaranteed to reflect what's actually saved to the database.
+1. **Strength is a hybrid, not client-only.** Session log (`/strength` list, save, delete) is Prisma-backed via server actions. Templates, the in-progress draft, and the `/strength/exercises/[name]` detail page are still `localStorage`-only — and the detail page reads a _different_ localStorage source than the Prisma-backed list, so its PRs/charts are not guaranteed to reflect what's actually saved to the database.
 2. **Nutrition, Body, and AI Coach have zero Prisma involvement** despite full schema support existing for Nutrition and Body. Don't assume `docs/phase-1-architecture.md`'s "computed analytics from indexed tables" plan is reachable yet — there's nothing indexed to compute from in those domains.
 3. **`requireUser()` in `(app)/layout.tsx` is the real security boundary**, not `src/middleware.ts` (cookie-presence check only, and its route list is missing `/strength`/`/ai-coach` — cosmetic gap, not a security one).
 4. **JWT sessions can't be revoked directly** — password reset works around this via `passwordUpdatedAt` staleness-checking in `requireUser()`, plus deleting all `Session` rows on reset.
