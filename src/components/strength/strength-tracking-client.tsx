@@ -16,8 +16,8 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -31,6 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   STRENGTH_DRAFT_STORAGE_KEY,
+  clearStrengthDraft,
   createEmptySet,
   createExerciseEntry,
   createTemplate,
@@ -41,15 +42,19 @@ import {
   getExerciseHistory,
   getExercisePersonalRecords,
   getExerciseProgress,
+  getLocalTimeKey,
   getPreviousExerciseSession,
   getWorkoutDuration,
   getWorkoutTotals,
+  isInProgressWorkout,
+  loadStrengthDraft,
   loadStrengthTemplates,
   loadStrengthWorkouts,
   saveStrengthTemplates,
   slugifyExerciseName
 } from "@/features/strength/client-store";
 import {
+  cancelInProgressStrengthWorkoutAction,
   deleteStrengthWorkoutAction,
   saveStrengthWorkoutAction
 } from "@/features/strength/actions";
@@ -74,11 +79,16 @@ const RANGE_OPTIONS: { value: StrengthRange; label: string }[] = [
   { value: "ALL", label: "All" }
 ];
 
-const CHART_METRICS: { value: ChartMetric; label: string; color: string }[] = [
-  { value: "estimatedOneRepMax", label: "Estimated 1RM", color: "#9cee3a" },
-  { value: "highestWeight", label: "Highest Weight", color: "#38bdf8" },
-  { value: "trainingVolume", label: "Training Volume", color: "#fbbf24" },
-  { value: "averageReps", label: "Average Reps", color: "#f472b6" }
+const CHART_METRICS: { value: ChartMetric; label: string; color: string; dash?: string }[] = [
+  { value: "estimatedOneRepMax", label: "Estimated 1RM", color: "hsl(var(--foreground))" },
+  { value: "highestWeight", label: "Highest Weight", color: "hsl(var(--foreground))", dash: "8 4" },
+  { value: "trainingVolume", label: "Training Volume", color: "hsl(var(--muted-foreground))" },
+  {
+    value: "averageReps",
+    label: "Average Reps",
+    color: "hsl(var(--muted-foreground))",
+    dash: "2 4"
+  }
 ];
 
 export function StrengthTrackingClient({
@@ -95,19 +105,33 @@ export function StrengthTrackingClient({
   const [templateDraft, setTemplateDraft] = useState<StrengthTemplate | null>(null);
   const [strengthError, setStrengthError] = useState("");
   const [isSavingWorkout, setIsSavingWorkout] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [editorError, setEditorError] = useState("");
+  const [conflictWorkoutId, setConflictWorkoutId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [deletingWorkoutId, setDeletingWorkoutId] = useState<string | null>(null);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     setTemplates(loadStrengthTemplates());
 
-    const rawDraft = localStorage.getItem(STRENGTH_DRAFT_STORAGE_KEY);
-    if (rawDraft) {
-      try {
-        setRecoverableDraft(JSON.parse(rawDraft) as StrengthWorkout);
-      } catch {
-        localStorage.removeItem(STRENGTH_DRAFT_STORAGE_KEY);
-      }
+    const localDraft = loadStrengthDraft();
+    if (!localDraft) {
+      return;
     }
+
+    const savedCopy = initialWorkouts.find((workout) => workout.id === localDraft.id);
+
+    if (!savedCopy) {
+      setRecoverableDraft(localDraft);
+    } else if (isInProgressWorkout(savedCopy) && localDraft.updatedAt > savedCopy.updatedAt) {
+      // Local edits are newer than the saved copy: keep them for Resume.
+      setRecoverableDraft(localDraft);
+    } else {
+      clearStrengthDraft();
+    }
+    // Reconcile once on mount against the server-provided workouts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -120,12 +144,32 @@ export function StrengthTrackingClient({
     }
   }, [draft]);
 
+  useEffect(() => {
+    if (saveState !== "saved") {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setSaveState("idle");
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [saveState]);
+
+  const completedWorkouts = useMemo(
+    () => workouts.filter((workout) => !isInProgressWorkout(workout)),
+    [workouts]
+  );
+  const inProgressWorkout = workouts.find(isInProgressWorkout);
+
   const sortedWorkouts = useMemo(
     () =>
-      workouts
+      completedWorkouts
         .slice()
         .sort((a, b) => `${b.date}T${b.startTime}`.localeCompare(`${a.date}T${a.startTime}`)),
-    [workouts]
+    [completedWorkouts]
   );
 
   const selectedWorkout = workouts.find((workout) => workout.id === selectedWorkoutId);
@@ -135,13 +179,17 @@ export function StrengthTrackingClient({
     saveStrengthTemplates(nextTemplates);
   }
 
-  async function saveDraft() {
+  function buildPayload(intent: "continue" | "end"): StrengthWorkout | null {
     if (!draft) {
-      return;
+      return null;
     }
 
-    const cleanedDraft = {
+    const localTime = getLocalTimeKey();
+
+    return {
       ...draft,
+      startTime: draft.startTime || localTime,
+      endTime: (draft.endTime ?? "") === "" && intent === "end" ? localTime : (draft.endTime ?? ""),
       exercises: draft.exercises
         .filter((exercise) => exercise.name.trim())
         .map((exercise) => ({
@@ -151,30 +199,114 @@ export function StrengthTrackingClient({
         })),
       updatedAt: Date.now()
     };
+  }
 
-    if (cleanedDraft.exercises.length === 0) {
-      cleanedDraft.exercises = [createExerciseEntry("Bench Press")];
-    }
+  function mergeWorkout(saved: StrengthWorkout) {
+    setWorkouts((current) => [saved, ...current.filter((workout) => workout.id !== saved.id)]);
+  }
 
-    setIsSavingWorkout(true);
-    setStrengthError("");
+  function resumeWorkout(workoutId: string) {
+    const savedCopy = workouts.find((workout) => workout.id === workoutId);
+    const localCopy = recoverableDraft?.id === workoutId ? recoverableDraft : null;
+    const target =
+      savedCopy && localCopy
+        ? localCopy.updatedAt > savedCopy.updatedAt
+          ? localCopy
+          : savedCopy
+        : (savedCopy ?? localCopy);
 
-    const result = await saveStrengthWorkoutAction(cleanedDraft);
-    setIsSavingWorkout(false);
-
-    if (result.status === "error" || !result.workout) {
-      setStrengthError(result.message ?? "Workout could not be saved.");
+    if (!target) {
       return;
     }
 
-    setWorkouts([
-      result.workout,
-      ...workouts.filter((workout) => workout.id !== result.workout?.id)
-    ]);
-    localStorage.removeItem(STRENGTH_DRAFT_STORAGE_KEY);
+    setEditorError("");
+    setConflictWorkoutId(null);
+    setSaveState("idle");
+    setRecoverableDraft(null);
+    setSelectedWorkoutId(null);
+    setDraft(target);
+  }
+
+  async function submitDraft(intent: "continue" | "end") {
+    if (savingRef.current) {
+      return;
+    }
+
+    const payload = buildPayload(intent);
+
+    if (!payload) {
+      return;
+    }
+
+    savingRef.current = true;
+    setIsSavingWorkout(true);
+    setSaveState(intent === "continue" ? "saving" : "idle");
+    setEditorError("");
+    setConflictWorkoutId(null);
+    setStrengthError("");
+
+    let result: Awaited<ReturnType<typeof saveStrengthWorkoutAction>>;
+    try {
+      result = await saveStrengthWorkoutAction(payload, intent);
+    } catch {
+      result = { status: "error", message: "Workout could not be saved." };
+    }
+
+    savingRef.current = false;
+    setIsSavingWorkout(false);
+
+    if (result.status === "error" || !result.workout) {
+      setSaveState("idle");
+      setEditorError(result.message ?? "Workout could not be saved.");
+      setConflictWorkoutId(result.inProgressWorkoutId ?? null);
+      return;
+    }
+
+    const saved = result.workout;
+    mergeWorkout(saved);
+
+    if (intent === "continue") {
+      setDraft((current) =>
+        current?.id === saved.id ? { ...current, status: saved.status ?? "in_progress" } : current
+      );
+      setSaveState("saved");
+      return;
+    }
+
+    clearStrengthDraft();
     setDraft(null);
     setRecoverableDraft(null);
-    setSelectedWorkoutId(result.workout.id);
+    setSaveState("idle");
+    setSelectedWorkoutId(saved.id);
+  }
+
+  async function cancelDraft() {
+    if (!draft || savingRef.current) {
+      return;
+    }
+
+    const savedCopy = workouts.find((workout) => workout.id === draft.id);
+
+    if (savedCopy && isInProgressWorkout(savedCopy)) {
+      setIsCancelling(true);
+      setEditorError("");
+      const result = await cancelInProgressStrengthWorkoutAction(draft.id);
+      setIsCancelling(false);
+
+      if (result.status === "error") {
+        setEditorError(result.message ?? "Workout could not be cancelled.");
+        return;
+      }
+
+      setWorkouts((current) => current.filter((workout) => workout.id !== draft.id));
+    }
+
+    clearStrengthDraft();
+    setDraft(null);
+    setRecoverableDraft(null);
+    setEditorError("");
+    setConflictWorkoutId(null);
+    setSaveState("idle");
   }
 
   async function deleteWorkout(workoutId: string) {
@@ -203,19 +335,28 @@ export function StrengthTrackingClient({
     setSelectedWorkoutId(null);
   }
 
-  function startTemplate(template: StrengthTemplate) {
-    setActiveTab("history");
+  function beginNewDraft(template?: StrengthTemplate) {
+    setEditorError("");
+    setConflictWorkoutId(null);
+    setSaveState("idle");
     setRecoverableDraft(null);
     setDraft(createWorkoutDraft(template));
+  }
+
+  function startTemplate(template: StrengthTemplate) {
+    setActiveTab("history");
+    beginNewDraft(template);
   }
 
   function closeDraftEditor() {
     setRecoverableDraft(draft);
     setDraft(null);
+    setEditorError("");
+    setConflictWorkoutId(null);
   }
 
   function discardRecoverableDraft() {
-    localStorage.removeItem(STRENGTH_DRAFT_STORAGE_KEY);
+    clearStrengthDraft();
     setRecoverableDraft(null);
   }
 
@@ -236,141 +377,153 @@ export function StrengthTrackingClient({
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 pb-24">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-primary">Training</p>
-          <h1 className="text-3xl font-semibold tracking-normal">Strength Tracking</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Log sessions</p>
-        </div>
-        <div className="flex rounded-md border border-white/10 bg-white/[0.04] p-1">
-          <TabButton
-            active={activeTab === "history"}
-            onClick={() => {
-              setActiveTab("history");
-            }}
-          >
-            Workout History
-          </TabButton>
-          <TabButton
-            active={activeTab === "templates"}
-            onClick={() => {
-              setActiveTab("templates");
-            }}
-          >
-            Workout Templates
-          </TabButton>
-        </div>
-      </header>
-
-      {activeTab === "history" ? (
-        <>
-          {strengthError ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {strengthError}
-            </div>
-          ) : null}
-          <WorkoutHistory
-            workouts={sortedWorkouts}
-            selectedWorkout={selectedWorkout}
-            deletingWorkoutId={deletingWorkoutId}
-            onOpenWorkout={setSelectedWorkoutId}
-            onCloseWorkout={() => {
-              setSelectedWorkoutId(null);
-            }}
-            onDeleteWorkout={deleteWorkout}
-          />
-        </>
-      ) : (
-        <TemplateList
-          templates={templates}
-          onStart={startTemplate}
-          onCreate={() => {
-            setTemplateDraft(createTemplate("New Template", [""]));
-          }}
-          onEdit={setTemplateDraft}
-          onDuplicate={(template) => {
-            persistTemplates([
-              createTemplate(`${template.name} Copy`, template.exerciseNames),
-              ...templates
-            ]);
-          }}
-          onDelete={(templateId) => {
-            persistTemplates(templates.filter((template) => template.id !== templateId));
-          }}
-        />
-      )}
-
-      {recoverableDraft && !draft ? (
-        <section className="flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <MotionConfig reducedMotion="user">
+      <div className="animate-fade-in mx-auto max-w-5xl space-y-6 pb-24">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="font-semibold tracking-normal">In-progress workout saved</h2>
-            <p className="text-sm text-muted-foreground">
-              {recoverableDraft.name ?? "Untitled Workout"} from{" "}
-              {formatWorkoutDate(recoverableDraft.date)} at {recoverableDraft.startTime}
-            </p>
+            <p className="text-sm font-medium text-muted-foreground">Training</p>
+            <h1 className="text-title font-semibold tracking-tight">Strength Tracking</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Log sessions</p>
           </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
+          <div className="flex rounded-full border border-border bg-muted p-1">
+            <TabButton
+              active={activeTab === "history"}
               onClick={() => {
-                discardRecoverableDraft();
+                setActiveTab("history");
               }}
             >
-              Discard
-            </Button>
-            <Button
+              Workout History
+            </TabButton>
+            <TabButton
+              active={activeTab === "templates"}
               onClick={() => {
-                setDraft(recoverableDraft);
-                setRecoverableDraft(null);
+                setActiveTab("templates");
               }}
             >
-              Resume
-            </Button>
+              Workout Templates
+            </TabButton>
           </div>
-        </section>
-      ) : null}
+        </header>
 
-      <Button
-        className="fixed bottom-24 right-5 z-30 size-16 rounded-full shadow-glow md:bottom-8 md:right-8"
-        size="icon"
-        aria-label="Create new workout"
-        onClick={() => {
-          setRecoverableDraft(null);
-          setDraft(createWorkoutDraft());
-        }}
-      >
-        <Plus className="size-8" aria-hidden="true" />
-      </Button>
-
-      <AnimatePresence>
-        {draft ? (
-          <WorkoutEditor
-            key={draft.id}
-            draft={draft}
-            workouts={workouts}
-            onChange={setDraft}
-            onClose={() => {
-              closeDraftEditor();
+        {activeTab === "history" ? (
+          <>
+            {strengthError ? (
+              <div className="rounded-md border border-foreground/30 bg-muted p-3 text-sm text-destructive">
+                {strengthError}
+              </div>
+            ) : null}
+            <WorkoutHistory
+              workouts={sortedWorkouts}
+              inProgressWorkout={inProgressWorkout}
+              onResumeWorkout={resumeWorkout}
+              selectedWorkout={selectedWorkout}
+              deletingWorkoutId={deletingWorkoutId}
+              onOpenWorkout={setSelectedWorkoutId}
+              onCloseWorkout={() => {
+                setSelectedWorkoutId(null);
+              }}
+              onDeleteWorkout={deleteWorkout}
+            />
+          </>
+        ) : (
+          <TemplateList
+            templates={templates}
+            onStart={startTemplate}
+            onCreate={() => {
+              setTemplateDraft(createTemplate("New Template", [""]));
             }}
-            onSave={saveDraft}
-            isSaving={isSavingWorkout}
+            onEdit={setTemplateDraft}
+            onDuplicate={(template) => {
+              persistTemplates([
+                createTemplate(`${template.name} Copy`, template.exerciseNames),
+                ...templates
+              ]);
+            }}
+            onDelete={(templateId) => {
+              persistTemplates(templates.filter((template) => template.id !== templateId));
+            }}
           />
+        )}
+
+        {recoverableDraft &&
+        !draft &&
+        !workouts.some((workout) => workout.id === recoverableDraft.id) ? (
+          <section className="flex flex-col gap-3 rounded-2xl border border-foreground/20 bg-muted p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold tracking-normal">In-progress workout saved</h2>
+              <p className="text-sm text-muted-foreground">
+                {recoverableDraft.name ?? "Workout Session"} from{" "}
+                {formatWorkoutDate(recoverableDraft.date)} at {recoverableDraft.startTime}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  discardRecoverableDraft();
+                }}
+              >
+                Discard
+              </Button>
+              <Button
+                onClick={() => {
+                  setDraft(recoverableDraft);
+                  setRecoverableDraft(null);
+                }}
+              >
+                Resume
+              </Button>
+            </div>
+          </section>
         ) : null}
 
-        {templateDraft ? (
-          <TemplateEditor
-            key={templateDraft.id}
-            template={templateDraft}
-            onChange={setTemplateDraft}
-            onClose={() => {
-              setTemplateDraft(null);
-            }}
-            onSave={saveTemplateDraft}
-          />
-        ) : null}
-      </AnimatePresence>
-    </div>
+        <Button
+          className="fixed bottom-24 right-5 z-30 size-16 rounded-full shadow-glow md:bottom-8 md:right-8"
+          size="icon"
+          aria-label="Create new workout"
+          onClick={() => {
+            beginNewDraft();
+          }}
+        >
+          <Plus className="size-8" aria-hidden="true" />
+        </Button>
+
+        <AnimatePresence>
+          {draft ? (
+            <WorkoutEditor
+              key={draft.id}
+              draft={draft}
+              workouts={completedWorkouts}
+              onChange={setDraft}
+              onClose={() => {
+                closeDraftEditor();
+              }}
+              onContinue={() => submitDraft("continue")}
+              onEnd={() => submitDraft("end")}
+              onCancel={cancelDraft}
+              isSaving={isSavingWorkout}
+              isCancelling={isCancelling}
+              saveState={saveState}
+              error={editorError}
+              conflictWorkoutId={conflictWorkoutId}
+              onResumeConflict={resumeWorkout}
+            />
+          ) : null}
+
+          {templateDraft ? (
+            <TemplateEditor
+              key={templateDraft.id}
+              template={templateDraft}
+              onChange={setTemplateDraft}
+              onClose={() => {
+                setTemplateDraft(null);
+              }}
+              onSave={saveTemplateDraft}
+            />
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </MotionConfig>
   );
 }
 
@@ -389,7 +542,9 @@ function TabButton({
       onClick={onClick}
       className={cn(
         "min-h-10 rounded-md px-3 text-sm font-medium transition-colors",
-        active ? "bg-primary text-primary-foreground" : "hover:bg-white/8 text-muted-foreground"
+        active
+          ? "rounded-full bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-accent"
       )}
     >
       {children}
@@ -399,6 +554,8 @@ function TabButton({
 
 function WorkoutHistory({
   workouts,
+  inProgressWorkout,
+  onResumeWorkout,
   selectedWorkout,
   deletingWorkoutId,
   onOpenWorkout,
@@ -406,6 +563,8 @@ function WorkoutHistory({
   onDeleteWorkout
 }: {
   workouts: StrengthWorkout[];
+  inProgressWorkout: StrengthWorkout | undefined;
+  onResumeWorkout: (workoutId: string) => void;
   selectedWorkout: StrengthWorkout | undefined;
   deletingWorkoutId: string | null;
   onOpenWorkout: (workoutId: string) => void;
@@ -415,6 +574,28 @@ function WorkoutHistory({
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <section className="space-y-3">
+        {inProgressWorkout ? (
+          <div className="flex flex-col gap-3 rounded-2xl border border-foreground/20 bg-muted p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <span className="rounded-full border border-foreground px-2.5 py-1 text-xs font-semibold text-foreground">
+                In progress
+              </span>
+              <h2 className="mt-2 text-xl font-semibold tracking-normal">
+                {inProgressWorkout.name?.trim() ? inProgressWorkout.name : "Workout Session"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {formatWorkoutDate(inProgressWorkout.date)} at {inProgressWorkout.startTime}
+              </p>
+            </div>
+            <Button
+              onClick={() => {
+                onResumeWorkout(inProgressWorkout.id);
+              }}
+            >
+              Resume
+            </Button>
+          </div>
+        ) : null}
         {workouts.map((workout) => (
           <WorkoutCard
             key={workout.id}
@@ -435,7 +616,7 @@ function WorkoutHistory({
             onDelete={onDeleteWorkout}
           />
         ) : (
-          <div className="rounded-lg border border-dashed border-white/15 bg-card/70 p-5 text-sm text-muted-foreground">
+          <div className="rounded-2xl border border-dashed border-border bg-card/70 p-5 text-sm text-muted-foreground">
             Select a workout to inspect the full session.
           </div>
         )}
@@ -470,13 +651,13 @@ function WorkoutCard({ workout, onOpen }: { workout: StrengthWorkout; onOpen: ()
     <button
       type="button"
       onClick={onOpen}
-      className="w-full rounded-lg border border-white/10 bg-card/90 p-4 text-left shadow-xl shadow-black/10 transition-colors hover:border-primary/50 hover:bg-card"
+      className="w-full rounded-2xl border border-border bg-card/90 p-4 text-left shadow-xl shadow-black/5 transition-colors hover:border-foreground/40 hover:bg-card dark:shadow-black/40"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">{formatWorkoutDate(workout.date)}</p>
           <h2 className="mt-1 text-xl font-semibold tracking-normal">
-            {workout.name ?? "Untitled Workout"}
+            {workout.name ?? "Workout Session"}
           </h2>
           <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
             <StatPill icon={Clock} label={workout.startTime} />
@@ -489,7 +670,7 @@ function WorkoutCard({ workout, onOpen }: { workout: StrengthWorkout; onOpen: ()
       </div>
 
       {workout.notes ? (
-        <p className="mt-4 border-t border-white/10 pt-3 text-sm text-muted-foreground">
+        <p className="mt-4 border-t border-border pt-3 text-sm text-muted-foreground">
           {workout.notes}
         </p>
       ) : null}
@@ -511,11 +692,13 @@ function WorkoutDetail({
   const totals = getWorkoutTotals(workout);
 
   return (
-    <div className="max-h-full overflow-y-auto rounded-lg border border-white/10 bg-card p-4 shadow-xl shadow-black/30">
+    <div className="max-h-full overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-xl shadow-black/5 dark:shadow-black/40">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">{formatWorkoutDate(workout.date, true)}</p>
-          <h2 className="text-xl font-semibold tracking-normal">{workout.name ?? "Workout"}</h2>
+          <h2 className="text-xl font-semibold tracking-normal">
+            {workout.name ?? "Workout Session"}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {workout.startTime} - {totals.exerciseCount} exercises - {totals.setCount} sets
           </p>
@@ -542,7 +725,7 @@ function WorkoutDetail({
         {workout.exercises.map((exercise) => (
           <section
             key={exercise.id}
-            className="rounded-md border border-white/10 bg-background/50 p-3"
+            className="rounded-md border border-border bg-background/50 p-3"
           >
             <Link
               href={`/strength/exercises/${slugifyExerciseName(exercise.name)}`}
@@ -597,13 +780,13 @@ function TemplateList({
       </div>
 
       {templates.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-white/15 bg-card/70 p-5 text-sm text-muted-foreground">
+        <div className="rounded-2xl border border-dashed border-border bg-card/70 p-5 text-sm text-muted-foreground">
           No workout templates yet. Create one when you are ready.
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {templates.map((template) => (
-            <article key={template.id} className="rounded-lg border border-white/10 bg-card/90 p-4">
+            <article key={template.id} className="rounded-2xl border border-border bg-card/90 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold tracking-normal">{template.name}</h2>
@@ -675,16 +858,33 @@ function WorkoutEditor({
   workouts,
   onChange,
   onClose,
-  onSave,
-  isSaving
+  onContinue,
+  onEnd,
+  onCancel,
+  isSaving,
+  isCancelling,
+  saveState,
+  error,
+  conflictWorkoutId,
+  onResumeConflict
 }: {
   draft: StrengthWorkout;
   workouts: StrengthWorkout[];
   onChange: (draft: StrengthWorkout) => void;
   onClose: () => void;
-  onSave: () => void | Promise<void>;
+  onContinue: () => void | Promise<void>;
+  onEnd: () => void | Promise<void>;
+  onCancel: () => void | Promise<void>;
   isSaving: boolean;
+  isCancelling: boolean;
+  saveState: "idle" | "saving" | "saved";
+  error: string;
+  conflictWorkoutId: string | null;
+  onResumeConflict: (workoutId: string) => void;
 }) {
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const busy = isSaving || isCancelling;
+
   function updateExercise(exerciseId: string, nextExercise: StrengthExerciseEntry) {
     onChange({
       ...draft,
@@ -702,7 +902,7 @@ function WorkoutEditor({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 16 }}
     >
-      <div className="mx-auto max-w-3xl space-y-5 rounded-lg border border-white/10 bg-card p-4 shadow-xl shadow-black/30 sm:p-5">
+      <div className="mx-auto max-w-3xl space-y-5 rounded-2xl border border-border bg-card p-4 shadow-xl shadow-black/5 dark:shadow-black/40 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm text-primary">New Workout</p>
@@ -713,14 +913,14 @@ function WorkoutEditor({
           </Button>
         </div>
 
-        <section className="grid gap-3 rounded-md border border-white/10 bg-background/50 p-3 sm:grid-cols-2">
+        <section className="grid gap-3 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-2">
           <TextField
             label="Workout Name"
             value={draft.name ?? ""}
             onChange={(name) => {
               onChange({ ...draft, name, updatedAt: Date.now() });
             }}
-            placeholder="Anterior Workout"
+            placeholder="Workout Session"
           />
           <TextField
             label="Date"
@@ -753,7 +953,7 @@ function WorkoutEditor({
               onChange={(event) => {
                 onChange({ ...draft, notes: event.target.value, updatedAt: Date.now() });
               }}
-              className="min-h-20 w-full rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-sm outline-none focus:border-primary/70"
+              className="min-h-20 w-full rounded-md border border-border bg-muted px-3 py-2 text-sm outline-none focus:border-foreground"
             />
           </label>
         </section>
@@ -795,15 +995,86 @@ function WorkoutEditor({
             Add Exercise
           </Button>
           <Button
+            variant="outline"
             onClick={() => {
-              void onSave();
+              void onContinue();
             }}
-            disabled={isSaving}
+            disabled={busy}
           >
             <Save className="size-4" aria-hidden="true" />
-            {isSaving ? "Saving..." : "Save Workout"}
+            {saveState === "saving"
+              ? "Saving..."
+              : saveState === "saved"
+                ? "Saved"
+                : "Continue Workout"}
+          </Button>
+          <Button
+            onClick={() => {
+              void onEnd();
+            }}
+            disabled={busy}
+          >
+            <Check className="size-4" aria-hidden="true" />
+            End Workout
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setConfirmingCancel(true);
+            }}
+            disabled={busy}
+          >
+            <X className="size-4" aria-hidden="true" />
+            Cancel Workout
           </Button>
         </div>
+
+        {error ? (
+          <div className="flex flex-col gap-2 rounded-md border border-foreground/30 bg-muted p-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+            <span>{error}</span>
+            {conflictWorkoutId ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  onResumeConflict(conflictWorkoutId);
+                }}
+              >
+                Resume
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {confirmingCancel ? (
+          <div
+            role="alertdialog"
+            aria-label="Confirm cancel workout"
+            className="space-y-3 rounded-md border border-foreground/30 bg-muted p-3"
+          >
+            <p className="text-sm">Cancel this workout? Your entries will be discarded.</p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setConfirmingCancel(false);
+                }}
+                disabled={isCancelling}
+              >
+                Keep Workout
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  void onCancel();
+                }}
+                disabled={isCancelling}
+              >
+                {isCancelling ? "Cancelling..." : "Yes, Cancel"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </motion.div>
   );
@@ -836,7 +1107,7 @@ function ExerciseEditor({
   }
 
   return (
-    <motion.section layout className="rounded-lg border border-white/10 bg-background/50 p-3">
+    <motion.section layout className="rounded-2xl border border-border bg-background/50 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <TextField
@@ -845,7 +1116,7 @@ function ExerciseEditor({
             onChange={(name) => {
               onChange({ ...exercise, name });
             }}
-            placeholder="Bench Press"
+            placeholder="Exercise"
           />
           <TextField
             label="Notes"
@@ -853,7 +1124,7 @@ function ExerciseEditor({
             onChange={(notes) => {
               onChange({ ...exercise, notes });
             }}
-            placeholder="Pause first rep"
+            placeholder="Notes"
           />
         </div>
         <Button variant="ghost" size="icon" onClick={onRemove} aria-label="Remove exercise">
@@ -874,7 +1145,7 @@ function ExerciseEditor({
               exit={{ opacity: 0, y: -8 }}
               className="grid grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_44px] gap-2 sm:grid-cols-[52px_repeat(4,minmax(0,1fr))_44px]"
             >
-              <div className="grid h-11 place-items-center rounded-md bg-white/[0.05] text-sm text-muted-foreground">
+              <div className="grid h-11 place-items-center rounded-md bg-muted text-sm text-muted-foreground">
                 {setIndex + 1}
               </div>
               <NumberField
@@ -916,7 +1187,7 @@ function ExerciseEditor({
                   "grid h-11 place-items-center rounded-md border transition-colors",
                   set.completed
                     ? "border-primary bg-primary text-primary-foreground"
-                    : "border-white/10 bg-white/[0.04] text-muted-foreground"
+                    : "border-border bg-muted text-muted-foreground"
                 )}
                 aria-label="Toggle set completed"
               >
@@ -955,7 +1226,7 @@ function ExerciseEditor({
 
 function PreviousSessionComparison({ previousSession }: { previousSession: ExerciseHistoryEntry }) {
   return (
-    <div className="mt-4 rounded-md border border-primary/20 bg-primary/10 p-3">
+    <div className="mt-4 rounded-md border border-border bg-muted p-3">
       <p className="text-xs font-semibold uppercase text-primary">Last session</p>
       <p className="mt-1 text-sm text-muted-foreground">
         {formatWorkoutDate(previousSession.date)} at {previousSession.startTime}
@@ -989,7 +1260,7 @@ function TemplateEditor({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      <div className="mx-auto max-w-xl rounded-lg border border-white/10 bg-card p-5 shadow-xl shadow-black/30">
+      <div className="mx-auto max-w-xl rounded-2xl border border-border bg-card p-5 shadow-xl shadow-black/5 dark:shadow-black/40">
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-xl font-semibold tracking-normal">Workout Template</h2>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close template editor">
@@ -1066,7 +1337,7 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
   const [metric, setMetric] = useState<ChartMetric>("estimatedOneRepMax");
 
   useEffect(() => {
-    setWorkouts(loadStrengthWorkouts());
+    setWorkouts(loadStrengthWorkouts().filter((workout) => !isInProgressWorkout(workout)));
   }, []);
 
   const history = useMemo(
@@ -1081,7 +1352,7 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
   const selectedMetric = CHART_METRICS.find((item) => item.value === metric) ?? {
     value: "estimatedOneRepMax",
     label: "Estimated 1RM",
-    color: "#9cee3a"
+    color: "hsl(var(--foreground))"
   };
 
   return (
@@ -1104,7 +1375,7 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
         <RecordCard label="Most Reps" value={String(records.mostReps)} />
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-card/90 p-4">
+      <section className="rounded-2xl border border-border bg-card/90 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold tracking-normal">Progress Graphs</h2>
           <div className="flex flex-wrap gap-2">
@@ -1119,7 +1390,7 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
                   "h-9 rounded-md px-3 text-sm font-medium transition-colors",
                   range === option.value
                     ? "bg-primary text-primary-foreground"
-                    : "bg-white/[0.05] text-muted-foreground hover:bg-white/10"
+                    : "bg-muted text-muted-foreground hover:bg-accent"
                 )}
               >
                 {option.label}
@@ -1137,10 +1408,10 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
                 setMetric(item.value);
               }}
               className={cn(
-                "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                "press rounded-full border px-4 py-2 text-sm font-medium transition-colors",
                 metric === item.value
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-white/10 bg-white/[0.04] text-muted-foreground"
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-muted text-muted-foreground"
               )}
             >
               {item.label}
@@ -1151,19 +1422,24 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
         <div className="mt-5 h-72">
           <ResponsiveContainer width="100%" height="100%">
             <RechartsLineChart data={progress} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+              <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
               <XAxis
                 dataKey="date"
-                stroke="rgba(255,255,255,0.45)"
+                stroke="hsl(var(--muted-foreground))"
                 fontSize={12}
                 tickLine={false}
               />
-              <YAxis stroke="rgba(255,255,255,0.45)" fontSize={12} tickLine={false} width={44} />
+              <YAxis
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickLine={false}
+                width={44}
+              />
               <Tooltip
                 contentStyle={{
                   background: "hsl(var(--card))",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 8
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: 12
                 }}
               />
               <Line
@@ -1172,6 +1448,7 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
                 name={selectedMetric.label}
                 stroke={selectedMetric.color}
                 strokeWidth={3}
+                strokeDasharray={selectedMetric.dash}
                 dot={{ r: 4 }}
               />
             </RechartsLineChart>
@@ -1184,18 +1461,20 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
         {history.map((entry) => (
           <article
             key={`${entry.workoutId}-${entry.date}`}
-            className="rounded-lg border border-white/10 bg-card/90 p-4"
+            className="rounded-2xl border border-border bg-card/90 p-4"
           >
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="font-semibold">{formatWorkoutDate(entry.date, true)}</h3>
-                <p className="text-sm text-muted-foreground">{entry.workoutName ?? "Workout"}</p>
+                <p className="text-sm text-muted-foreground">
+                  {entry.workoutName ?? "Workout Session"}
+                </p>
               </div>
               <span className="text-sm text-muted-foreground">{entry.startTime}</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {entry.sets.map((set, index) => (
-                <span key={set.id} className="rounded-md bg-white/[0.06] px-3 py-2 text-sm">
+                <span key={set.id} className="rounded-md bg-muted px-3 py-2 text-sm">
                   Set {index + 1}: {formatSet(set)}
                 </span>
               ))}
@@ -1209,7 +1488,7 @@ export function ExerciseDetailClient({ exerciseName }: { exerciseName: string })
 
 function RecordCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-card/90 p-4">
+    <div className="rounded-2xl border border-border bg-card/90 p-4">
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-normal">{value}</p>
     </div>
@@ -1218,7 +1497,7 @@ function RecordCard({ label, value }: { label: string; value: string }) {
 
 function StatPill({ icon: Icon, label }: { icon: typeof Clock; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-2 py-1">
+    <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1">
       <Icon className="size-3.5" aria-hidden="true" />
       {label}
     </span>
@@ -1248,7 +1527,7 @@ function TextField({
           onChange(event.target.value);
         }}
         placeholder={placeholder}
-        className="h-11 w-full rounded-md border border-white/10 bg-white/[0.05] px-3 text-sm outline-none focus:border-primary/70"
+        className="h-11 w-full rounded-md border border-border bg-muted px-3 text-sm outline-none focus:border-foreground"
       />
     </label>
   );
@@ -1277,7 +1556,7 @@ function NumberField({
           onChange(event.target.value === "" ? null : Number(event.target.value));
         }}
         placeholder={label}
-        className="h-11 w-full rounded-md border border-white/10 bg-white/[0.05] px-2 text-center text-sm outline-none focus:border-primary/70"
+        className="h-11 w-full rounded-md border border-border bg-muted px-2 text-center text-sm outline-none focus:border-foreground"
       />
     </label>
   );

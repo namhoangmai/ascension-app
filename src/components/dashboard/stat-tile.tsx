@@ -17,12 +17,12 @@ export function StatTile({ icon: Icon, label, value, sub, progress, href }: Stat
   const content = (
     <div
       className={cn(
-        "flex h-full flex-col gap-3 rounded-xl border border-white/10 bg-card/80 p-4 shadow-md shadow-black/10 transition-colors",
-        href ? "hover:border-primary/30 hover:bg-card" : undefined
+        "hover-lift flex h-full flex-col gap-3 rounded-2xl border border-border bg-card/80 p-5 shadow-sm transition-colors",
+        href ? "hover:border-foreground/40 hover:bg-card" : undefined
       )}
     >
       <div className="flex items-center justify-between">
-        <span className="bg-primary/12 grid size-9 place-items-center rounded-lg text-primary">
+        <span className="grid size-9 place-items-center rounded-lg bg-muted text-primary">
           <Icon className="size-4" aria-hidden="true" />
         </span>
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -34,7 +34,7 @@ export function StatTile({ icon: Icon, label, value, sub, progress, href }: Stat
         {sub ? <p className="mt-1 text-xs text-muted-foreground">{sub}</p> : null}
       </div>
       {typeof progress === "number" ? (
-        <div className="mt-auto h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div className="mt-auto h-1.5 overflow-hidden rounded-full bg-muted">
           <div
             className="h-full rounded-full bg-primary transition-all"
             style={{ width: `${String(Math.min(Math.max(progress, 0), 100))}%` }}
@@ -48,7 +48,7 @@ export function StatTile({ icon: Icon, label, value, sub, progress, href }: Stat
     return (
       <Link
         href={href}
-        className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="block h-full rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={`${label}: ${value}`}
       >
         {content}

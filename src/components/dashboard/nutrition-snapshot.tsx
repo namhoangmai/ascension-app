@@ -59,10 +59,10 @@ export function NutritionSnapshot() {
   const percentage = goal > 0 ? Math.min((consumed / goal) * 100, 100) : 0;
 
   return (
-    <section className="flex h-full flex-col rounded-2xl border border-white/10 bg-card/80 p-5 shadow-lg shadow-black/10">
+    <section className="flex h-full flex-col rounded-2xl border border-border bg-card/80 p-5 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="bg-primary/12 grid size-9 place-items-center rounded-lg text-primary">
+          <span className="grid size-9 place-items-center rounded-lg bg-muted text-primary">
             <Utensils className="size-4" aria-hidden="true" />
           </span>
           <h2 className="text-sm font-semibold text-card-foreground">Today&apos;s fuel</h2>
@@ -77,7 +77,7 @@ export function NutritionSnapshot() {
         {consumed} eaten of {goal} kcal goal
       </p>
 
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full rounded-full bg-primary transition-all"
           style={{ width: `${String(percentage)}%` }}

@@ -58,8 +58,6 @@ export async function saveProfileAction(
   _previousState: ProfileActionState,
   formData: FormData
 ): Promise<ProfileActionState> {
-  "use server";
-
   const user = await requireUser();
   const parsed = profileInputSchema.safeParse({
     profileImageDataUrl: formValue(formData, "profileImageDataUrl"),

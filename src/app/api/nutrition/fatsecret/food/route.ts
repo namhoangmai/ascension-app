@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertRateLimit, getRateLimitKey, RateLimitError } from "@/lib/auth/rate-limit";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getFatSecretFood } from "@/features/nutrition/services/fatsecret";
 
@@ -14,6 +15,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
+  try {
+    assertRateLimit({
+      key: getRateLimitKey("fatsecret", user.id),
+      limit: 30,
+      windowMs: 60 * 1000
+    });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+    }
+
+    throw error;
+  }
+
   const { searchParams } = new URL(request.url);
   const foodId = searchParams.get("foodId") ?? searchParams.get("food_id");
 
@@ -25,9 +40,8 @@ export async function GET(request: Request) {
     const result = await getFatSecretFood(foodId);
 
     return NextResponse.json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to import FatSecret food.";
-
-    return NextResponse.json({ error: message }, { status: 502 });
+  } catch {
+    // Upstream/config error details are not returned to the client.
+    return NextResponse.json({ error: "Unable to import FatSecret food." }, { status: 502 });
   }
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { FormMessage } from "../_components/form-message";
 import { AuthCard } from "../_components/auth-card";
 import { ResetPasswordForm } from "../_components/reset-password-form";
 
@@ -22,8 +23,11 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
         <ResetPasswordForm token={token} />
       ) : (
         <div className="space-y-4">
-          <p className="text-sm text-destructive">Reset token is missing.</p>
-          <Link href="/forgot-password" className="block text-sm font-medium text-primary">
+          <FormMessage tone="error">Reset token is missing.</FormMessage>
+          <Link
+            href="/forgot-password"
+            className="block text-sm font-medium text-foreground underline-offset-4 hover:underline"
+          >
             Request a new link
           </Link>
         </div>

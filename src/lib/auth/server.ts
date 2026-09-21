@@ -7,7 +7,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 
 import { auth, signIn, signOut } from "./auth";
-import { assertRateLimit, getRateLimitKey } from "./rate-limit";
+import { assertRateLimit, getRateLimitKey, RateLimitError } from "./rate-limit";
 import { toSessionUser, type SessionUser } from "./session";
 import {
   forgotPasswordSchema,
@@ -35,6 +35,11 @@ function formValue(formData: FormData, key: string) {
 function tokenHash(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
+
+const rateLimitedState = {
+  status: "error",
+  message: "Too many attempts. Please wait and try again."
+} satisfies AuthActionState;
 
 function validationError(
   fieldErrors: Record<string, string[]>,
@@ -85,8 +90,6 @@ export async function signInWithPassword(
   _previousState: AuthActionState,
   formData: FormData
 ): Promise<AuthActionState> {
-  "use server";
-
   const parsed = signInSchema.safeParse({
     email: formValue(formData, "email"),
     password: formValue(formData, "password"),
@@ -122,8 +125,6 @@ export async function signUpWithPassword(
   _previousState: AuthActionState,
   formData: FormData
 ): Promise<AuthActionState> {
-  "use server";
-
   const parsed = signUpSchema.safeParse({
     name: formValue(formData, "name"),
     email: formValue(formData, "email"),
@@ -137,7 +138,15 @@ export async function signUpWithPassword(
   }
 
   const rateLimitKey = getRateLimitKey("signup", parsed.data.email);
-  assertRateLimit({ key: rateLimitKey, limit: 3, windowMs: 60 * 60 * 1000 });
+  try {
+    assertRateLimit({ key: rateLimitKey, limit: 3, windowMs: 60 * 60 * 1000 });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return rateLimitedState;
+    }
+
+    throw error;
+  }
 
   try {
     const existingUser = await prisma.user.findUnique({
@@ -201,20 +210,14 @@ export async function signUpWithPassword(
 }
 
 export async function signInWithGoogle() {
-  "use server";
-
   await signIn("google", { redirectTo: "/profile/setup" });
 }
 
 export async function signInWithFacebook() {
-  "use server";
-
   await signIn("facebook", { redirectTo: "/dashboard" });
 }
 
 export async function signOutCurrentUser() {
-  "use server";
-
   await signOut({ redirectTo: "/" });
 }
 
@@ -222,8 +225,6 @@ export async function requestPasswordReset(
   _previousState: AuthActionState,
   formData: FormData
 ): Promise<AuthActionState> {
-  "use server";
-
   const parsed = forgotPasswordSchema.safeParse({
     email: formValue(formData, "email")
   });
@@ -233,7 +234,16 @@ export async function requestPasswordReset(
   }
 
   const rateLimitKey = getRateLimitKey("forgot-password", parsed.data.email);
-  assertRateLimit({ key: rateLimitKey, limit: 3, windowMs: 60 * 60 * 1000 });
+  try {
+    assertRateLimit({ key: rateLimitKey, limit: 3, windowMs: 60 * 60 * 1000 });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      // Same message as the success path so rate limiting does not reveal account existence.
+      return { status: "success", message: genericResetMessage };
+    }
+
+    throw error;
+  }
 
   const user = await prisma.user.findUnique({
     where: { email: parsed.data.email },
@@ -277,8 +287,6 @@ export async function resetPassword(
   _previousState: AuthActionState,
   formData: FormData
 ): Promise<AuthActionState> {
-  "use server";
-
   const parsed = resetPasswordSchema.safeParse({
     token: formValue(formData, "token"),
     password: formValue(formData, "password"),
@@ -290,7 +298,15 @@ export async function resetPassword(
   }
 
   const rateLimitKey = getRateLimitKey("reset-password", parsed.data.token.slice(0, 12));
-  assertRateLimit({ key: rateLimitKey, limit: 5, windowMs: 60 * 60 * 1000 });
+  try {
+    assertRateLimit({ key: rateLimitKey, limit: 5, windowMs: 60 * 60 * 1000 });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return rateLimitedState;
+    }
+
+    throw error;
+  }
 
   const resetToken = await prisma.passwordResetToken.findUnique({
     where: { tokenHash: tokenHash(parsed.data.token) },
@@ -322,22 +338,37 @@ export async function resetPassword(
     parallelism: 1
   });
 
-  await prisma.$transaction([
-    prisma.user.update({
+  // Consume the token atomically so two concurrent requests cannot both redeem it.
+  const redeemed = await prisma.$transaction(async (tx) => {
+    const consumed = await tx.passwordResetToken.updateMany({
+      where: { id: resetToken.id, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() }
+    });
+
+    if (consumed.count !== 1) {
+      return false;
+    }
+
+    await tx.user.update({
       where: { id: resetToken.userId },
       data: {
         passwordHash,
         passwordUpdatedAt: new Date()
       }
-    }),
-    prisma.passwordResetToken.update({
-      where: { id: resetToken.id },
-      data: { usedAt: new Date() }
-    }),
-    prisma.session.deleteMany({
+    });
+    await tx.session.deleteMany({
       where: { userId: resetToken.userId }
-    })
-  ]);
+    });
+
+    return true;
+  });
+
+  if (!redeemed) {
+    return {
+      status: "error",
+      message: "Reset link is invalid or expired."
+    };
+  }
 
   return {
     status: "success",

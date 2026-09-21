@@ -95,10 +95,11 @@ function weightSubLabel(current: number | null, target: number | null) {
 }
 
 export default async function DashboardPage() {
-  const [profile, workouts] = await Promise.all([
+  const [profile, allWorkouts] = await Promise.all([
     getRequiredCompletedProfile(),
     listStrengthWorkouts()
   ]);
+  const workouts = allWorkouts.filter((workout) => workout.status !== "in_progress");
 
   const displayName = displayNameForProfile(profile);
   const firstName = profile.firstName ?? displayName.split(" ")[0] ?? "athlete";
@@ -125,9 +126,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-card via-card/70 to-background p-6 shadow-xl shadow-black/30 sm:p-8">
+      <section className="animate-rise-in relative overflow-hidden rounded-3xl border border-border bg-card p-6 sm:p-10">
         <div
-          className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full bg-primary/20 blur-3xl"
+          className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full bg-foreground/5 blur-3xl"
           aria-hidden="true"
         />
         <div className="relative">

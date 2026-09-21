@@ -40,7 +40,7 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z
   .object({
-    token: z.string().min(32, "Reset token is invalid."),
+    token: z.string().min(32, "Reset token is invalid.").max(256, "Reset token is invalid."),
     password: passwordPolicySchema,
     confirmPassword: z.string()
   })

@@ -9,7 +9,7 @@ interface Props {
 
 export function FoodLogItem({ item, onDelete }: Props) {
   return (
-    <div className="border-white/6 flex items-start justify-between rounded-md border p-3">
+    <div className="flex items-start justify-between rounded-md border border-border p-3">
       <div>
         <div className="flex items-baseline gap-3">
           <h4 className="font-medium">{item.name}</h4>

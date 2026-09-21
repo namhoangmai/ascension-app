@@ -80,7 +80,7 @@ export function getSeedWorkouts(): StrengthWorkout[] {
   const base = [
     {
       date: "2026-07-15",
-      name: "Anterior Workout",
+      name: "Workout Session",
       startTime: "19:32",
       exercises: [
         ["Bench Press", [makeSet(80, 8), makeSet(80, 7), makeSet(80, 6)]],
@@ -90,7 +90,7 @@ export function getSeedWorkouts(): StrengthWorkout[] {
     },
     {
       date: "2026-07-08",
-      name: "Anterior Workout",
+      name: "Workout Session",
       startTime: "18:48",
       exercises: [
         ["Bench Press", [makeSet(77.5, 8), makeSet(77.5, 8), makeSet(77.5, 7)]],
@@ -166,6 +166,39 @@ export function isStrengthTemplate(value: unknown): value is StrengthTemplate {
     typeof template.name === "string" &&
     Array.isArray(template.exerciseNames)
   );
+}
+
+export function isInProgressWorkout(workout: StrengthWorkout) {
+  return workout.status === "in_progress";
+}
+
+export function getLocalTimeKey() {
+  return new Date().toTimeString().slice(0, 5);
+}
+
+export function loadStrengthDraft(): StrengthWorkout | null {
+  const raw = localStorage.getItem(STRENGTH_DRAFT_STORAGE_KEY);
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (isStrengthWorkout(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // fall through and clear the corrupt draft
+  }
+
+  localStorage.removeItem(STRENGTH_DRAFT_STORAGE_KEY);
+  return null;
+}
+
+export function clearStrengthDraft() {
+  localStorage.removeItem(STRENGTH_DRAFT_STORAGE_KEY);
 }
 
 export function loadStrengthWorkouts() {

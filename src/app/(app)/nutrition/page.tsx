@@ -33,9 +33,9 @@ const DEFAULT_LOG_GRAMS = 100;
 type MacroKey = keyof NutritionMacroGoals;
 
 const MACRO_CIRCLES: { key: MacroKey; label: string; color: string }[] = [
-  { key: "carbs", label: "Carbs", color: "#34d399" },
-  { key: "protein", label: "Protein", color: "#38bdf8" },
-  { key: "fat", label: "Fat", color: "#fbbf24" }
+  { key: "carbs", label: "Carbs", color: "hsl(var(--foreground))" },
+  { key: "protein", label: "Protein", color: "hsl(var(--foreground) / 0.6)" },
+  { key: "fat", label: "Fat", color: "hsl(var(--foreground) / 0.3)" }
 ];
 
 function getLogsByDate() {
@@ -82,7 +82,7 @@ function MacroRing({
 }) {
   const percentage = target > 0 ? Math.min(Math.round((value / target) * 100), 100) : 0;
   const progressDegrees = String(percentage * 3.6);
-  const background = `conic-gradient(${color} ${progressDegrees}deg, rgba(255,255,255,0.1) 0deg)`;
+  const background = `conic-gradient(${color} ${progressDegrees}deg, hsl(var(--muted)) 0deg)`;
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -249,7 +249,7 @@ export default function NutritionPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <label className="inline-flex h-11 items-center gap-2 rounded-md border border-white/10 bg-white/[0.06] px-3 text-sm">
+        <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-sm">
           <CalendarDays className="size-4 text-primary" aria-hidden="true" />
           <input
             type="date"
@@ -263,7 +263,7 @@ export default function NutritionPage() {
         </label>
       </div>
 
-      <section className="rounded-2xl border border-white/10 bg-card/90 p-5 shadow-xl shadow-black/20">
+      <section className="rounded-2xl border border-border bg-card/90 p-5 shadow-sm">
         <div className="text-center">
           <p className="text-sm text-muted-foreground">Calories you can eat today</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-normal">
@@ -274,7 +274,7 @@ export default function NutritionPage() {
           </p>
         </div>
 
-        <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
+        <div className="mt-5 h-3 overflow-hidden rounded-full bg-muted">
           <div
             className="h-full rounded-full bg-primary transition-all"
             style={{ width: `${String(caloriePercentage)}%` }}
@@ -293,7 +293,7 @@ export default function NutritionPage() {
           ))}
         </div>
 
-        <div className="mt-6 rounded-xl border border-white/10 bg-background/60 p-4">
+        <div className="mt-6 rounded-xl border border-border bg-background/60 p-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Macro goal</h2>
             <p className="text-sm font-medium text-primary">{Math.round(calorieGoal)} kcal</p>
@@ -314,7 +314,7 @@ export default function NutritionPage() {
                   onChange={(event) => {
                     handleMacroGoalChange(macro.key, Number(event.target.value));
                   }}
-                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.05] px-3 text-center text-sm outline-none focus:border-primary/70"
+                  className="h-11 w-full rounded-xl border border-border bg-muted px-3 text-center text-sm outline-none focus:border-primary/70"
                   aria-label={`${macro.label} goal grams`}
                 />
               </label>
@@ -323,7 +323,7 @@ export default function NutritionPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6">
+      <section className="rounded-2xl border border-border bg-card/80 p-4 sm:p-6">
         <h2 className="text-lg font-semibold">Log food</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Pick a food from your database and enter how many grams you ate.
@@ -337,7 +337,7 @@ export default function NutritionPage() {
                 setLogCategory(event.target.value as FoodCategory);
               }}
               aria-label="Food category"
-              className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none"
+              className="h-12 min-w-0 rounded-xl border border-border bg-background px-3 outline-none"
             >
               {foodCatalogByCategory.length === 0 ? (
                 <option value="">No categories yet</option>
@@ -355,7 +355,7 @@ export default function NutritionPage() {
               }}
               aria-label="Food to log"
               disabled={logCategoryFoods.length === 0}
-              className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none disabled:opacity-50"
+              className="h-12 min-w-0 rounded-xl border border-border bg-background px-3 outline-none disabled:opacity-50"
             >
               {logCategoryFoods.length === 0 ? (
                 <option value="">No foods in this category</option>
@@ -377,7 +377,7 @@ export default function NutritionPage() {
               }}
               aria-label="Amount in grams"
               placeholder="Grams"
-              className="h-12 rounded-xl border border-white/10 bg-background/70 px-3 text-right outline-none"
+              className="h-12 rounded-xl border border-border bg-background/70 px-3 text-right outline-none"
             />
           </div>
 
@@ -400,7 +400,7 @@ export default function NutritionPage() {
       <div className="flex justify-center">
         <Link
           href={logFoodHref}
-          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+          className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <Plus className="size-4" aria-hidden="true" />
           Add a new food or saved meal

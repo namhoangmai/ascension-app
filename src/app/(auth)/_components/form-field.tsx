@@ -5,6 +5,8 @@ import { useState, type ChangeEvent } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { FormMessage } from "./form-message";
+
 interface FormFieldProps {
   label: string;
   name: string;
@@ -48,8 +50,8 @@ export function FormField({
           onChange={onChange}
           {...(isControlled ? { value } : { defaultValue })}
           className={cn(
-            "h-12 w-full rounded-md border border-white/10 bg-white/[0.06] px-3 text-base text-foreground outline-none transition",
-            "placeholder:text-muted-foreground focus:border-primary/70 focus:ring-2 focus:ring-primary/20",
+            "h-12 w-full rounded-md border border-border bg-muted px-3 text-base text-foreground outline-none transition-shadow duration-200",
+            "placeholder:text-muted-foreground focus:border-foreground focus:ring-2 focus:ring-ring",
             isPassword ? "pr-12" : ""
           )}
         />
@@ -59,7 +61,7 @@ export function FormField({
             onClick={() => {
               setShowPassword((value) => !value);
             }}
-            className="hover:bg-white/8 absolute right-1 top-1 inline-flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+            className="press absolute right-1 top-1 inline-flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             aria-label={showPassword ? "Hide password" : "Show password"}
           >
             {showPassword ? (
@@ -70,7 +72,7 @@ export function FormField({
           </button>
         ) : null}
       </span>
-      {error?.length ? <p className="text-sm text-destructive">{error[0]}</p> : null}
+      {error?.length ? <FormMessage tone="error">{error[0]}</FormMessage> : null}
     </label>
   );
 }

@@ -46,14 +46,17 @@ export default async function ProfileSetupPage({ searchParams }: ProfileSetupPag
     : null;
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(156,238,58,0.10),transparent_30%),linear-gradient(180deg,#111,#050505_55%)] px-4 py-6">
+    <main className="min-h-screen bg-background px-4 py-6 text-foreground">
       <div className="mx-auto w-full max-w-4xl">
         <header className="mb-6 flex items-center justify-between gap-4">
           <Link href="/" className="text-lg font-semibold tracking-normal">
             Ascension
           </Link>
           {profile?.profileCompleted ? (
-            <Link href="/profile" className="text-sm font-medium text-primary">
+            <Link
+              href="/profile"
+              className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+            >
               Back to profile
             </Link>
           ) : null}

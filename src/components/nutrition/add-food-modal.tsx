@@ -59,7 +59,7 @@ export function AddFoodModal({ isOpen, onClose, onAdd }: Props) {
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
       <button
         type="button"
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-background/70 backdrop-blur-sm"
         onClick={onClose}
         aria-label="Close add food modal"
       />
@@ -145,7 +145,7 @@ export function AddFoodModal({ isOpen, onClose, onAdd }: Props) {
           </button>
           <button
             type="submit"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white"
+            className="press rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground"
           >
             Add
           </button>

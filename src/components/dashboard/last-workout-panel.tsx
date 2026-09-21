@@ -16,10 +16,10 @@ interface LastWorkoutPanelProps {
 
 export function LastWorkoutPanel({ summary }: LastWorkoutPanelProps) {
   return (
-    <section className="flex h-full flex-col rounded-2xl border border-white/10 bg-card/80 p-5 shadow-lg shadow-black/10">
+    <section className="flex h-full flex-col rounded-2xl border border-border bg-card/80 p-5 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="bg-primary/12 grid size-9 place-items-center rounded-lg text-primary">
+          <span className="grid size-9 place-items-center rounded-lg bg-muted text-primary">
             <Dumbbell className="size-4" aria-hidden="true" />
           </span>
           <h2 className="text-sm font-semibold text-card-foreground">Last session</h2>
@@ -44,7 +44,7 @@ export function LastWorkoutPanel({ summary }: LastWorkoutPanelProps) {
           {summary.topExercise ? (
             <p className="mt-1 text-sm text-muted-foreground">Started with {summary.topExercise}</p>
           ) : null}
-          <div className="mt-4 grid grid-cols-3 gap-3 border-t border-white/10 pt-4 text-center">
+          <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4 text-center">
             <div>
               <p className="text-base font-semibold text-card-foreground">
                 {summary.exerciseCount}

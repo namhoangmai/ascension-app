@@ -24,8 +24,29 @@ export function getRateLimitKey(scope: string, identifier: string): RateLimitKey
   return `auth:${scope}:${identifier.toLowerCase()}`;
 }
 
+const MAX_BUCKETS = 10_000;
+
+// Keeps memory bounded (keys include user-supplied emails). In-memory and per-process:
+// valid for Render's single instance only; resets on restart/deploy.
+function pruneBuckets(now: number) {
+  if (buckets.size < MAX_BUCKETS) {
+    return;
+  }
+
+  for (const [key, bucket] of buckets) {
+    if (bucket.resetAt <= now) {
+      buckets.delete(key);
+    }
+  }
+
+  if (buckets.size >= MAX_BUCKETS) {
+    buckets.clear();
+  }
+}
+
 export function assertRateLimit({ key, limit, windowMs }: RateLimitOptions) {
   const now = Date.now();
+  pruneBuckets(now);
   const bucket = buckets.get(key);
 
   if (!bucket || bucket.resetAt <= now) {

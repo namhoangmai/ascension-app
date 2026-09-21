@@ -7,6 +7,7 @@ import { resetPasswordAction } from "@/lib/auth/actions";
 import type { AuthActionState } from "@/lib/auth/server";
 
 import { FormField } from "./form-field";
+import { FormMessage } from "./form-message";
 import { PasswordRequirements } from "./password-requirements";
 import { SubmitButton } from "./submit-button";
 
@@ -50,16 +51,15 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         required
       />
       {state.message ? (
-        <p
-          className={
-            state.status === "success" ? "text-sm text-primary" : "text-sm text-destructive"
-          }
-        >
+        <FormMessage tone={state.status === "success" ? "success" : "error"}>
           {state.message}
-        </p>
+        </FormMessage>
       ) : null}
       {state.status === "success" ? (
-        <Link href="/sign-in" className="block text-sm font-medium text-primary">
+        <Link
+          href="/sign-in"
+          className="block text-sm font-medium text-foreground underline-offset-4 hover:underline"
+        >
           Back to sign in
         </Link>
       ) : null}

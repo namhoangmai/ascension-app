@@ -11,7 +11,7 @@ export function CalorieSummaryCard({ calorieGoal, totalConsumed }: Props) {
   const remaining = Math.max(calorieGoal - totalConsumed, 0);
 
   return (
-    <section className="from-white/3 rounded-2xl border border-white/10 bg-gradient-to-b to-transparent p-6 shadow-md">
+    <section className="rounded-2xl border border-border bg-gradient-to-b from-muted to-transparent p-6 shadow-md">
       <h3 className="text-sm font-medium text-muted-foreground">Calories Left Today</h3>
       <div className="mt-3 flex items-baseline gap-4">
         <div>

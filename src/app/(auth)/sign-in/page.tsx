@@ -15,14 +15,17 @@ export default function SignInPage() {
         <GoogleButton />
         <FacebookButton />
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px flex-1 bg-white/10" />
+          <span className="h-px flex-1 bg-border" />
           or
-          <span className="h-px flex-1 bg-white/10" />
+          <span className="h-px flex-1 bg-border" />
         </div>
         <SignInForm />
         <p className="text-center text-sm text-muted-foreground">
           New here?{" "}
-          <Link href="/sign-up" className="font-medium text-primary">
+          <Link
+            href="/sign-up"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
             Create an account
           </Link>
         </p>

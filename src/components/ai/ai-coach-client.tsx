@@ -134,13 +134,13 @@ export function AiCoachClient() {
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-medium text-primary">Personal Coach</p>
-          <h1 className="text-3xl font-semibold tracking-normal">AI Coach</h1>
+          <h1 className="text-title font-semibold">AI Coach</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Data-aware coaching across strength, macros, body progress, and journal reflections.
             Recommendations explain the evidence they used.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-1 rounded-md border border-white/10 bg-white/[0.04] p-1 sm:flex">
+        <div className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-muted p-1 sm:flex">
           {[
             ["summary", "Summary"],
             ["meal", "Meals"],
@@ -159,7 +159,7 @@ export function AiCoachClient() {
                 "min-h-10 rounded-md px-3 text-sm font-medium transition-colors",
                 activeTab === value
                   ? "bg-primary text-primary-foreground"
-                  : "hover:bg-white/8 text-muted-foreground"
+                  : "text-muted-foreground hover:bg-accent"
               )}
             >
               {label}
@@ -247,7 +247,10 @@ function SummaryTab({
 
       <section className="grid gap-3 lg:grid-cols-3">
         {insights.map((insight) => (
-          <article key={insight.title} className="rounded-lg border border-white/10 bg-card/90 p-4">
+          <article
+            key={insight.title}
+            className="hover-lift animate-rise-in rounded-2xl border border-border bg-card/90 p-4"
+          >
             <div className="flex items-start justify-between gap-3">
               <h2 className="font-semibold tracking-normal">{insight.title}</h2>
               <span
@@ -256,15 +259,15 @@ function SummaryTab({
                   insight.priority === "high"
                     ? "bg-destructive/20 text-destructive"
                     : insight.priority === "medium"
-                      ? "bg-primary/15 text-primary"
-                      : "bg-white/[0.06] text-muted-foreground"
+                      ? "bg-foreground text-background"
+                      : "bg-muted text-muted-foreground"
                 )}
               >
                 {insight.priority}
               </span>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">{insight.body}</p>
-            <p className="mt-3 rounded-md bg-white/[0.05] p-3 text-xs text-muted-foreground">
+            <p className="mt-3 rounded-md bg-muted p-3 text-xs text-muted-foreground">
               Why: {insight.evidence}
             </p>
           </article>
@@ -283,7 +286,7 @@ function MealTab({
 }) {
   return (
     <section className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-card/90 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card/90 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold tracking-normal">AI Meal Plan</h2>
           <p className="text-sm text-muted-foreground">
@@ -299,7 +302,10 @@ function MealTab({
 
       <div className="grid gap-3 md:grid-cols-2">
         {mealPlan.meals.map((meal) => (
-          <article key={meal.name} className="rounded-lg border border-white/10 bg-card/90 p-4">
+          <article
+            key={meal.name}
+            className="hover-lift animate-rise-in rounded-2xl border border-border bg-card/90 p-4"
+          >
             <h3 className="font-semibold">{meal.name}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {String(meal.calories)} kcal - P {String(meal.protein)} / C {String(meal.carbs)} / F{" "}
@@ -310,7 +316,7 @@ function MealTab({
                 <li key={food}>{food}</li>
               ))}
             </ul>
-            <p className="mt-3 rounded-md bg-white/[0.05] p-3 text-sm text-muted-foreground">
+            <p className="mt-3 rounded-md bg-muted p-3 text-sm text-muted-foreground">
               {meal.preparation}
             </p>
           </article>
@@ -332,12 +338,15 @@ function WorkoutTab({ workoutPlan }: { workoutPlan: ReturnType<typeof generateWo
       <CoachPanel title="Workout Recommendation">{workoutPlan.rationale}</CoachPanel>
       <div className="grid gap-3 lg:grid-cols-2">
         {workoutPlan.schedule.map((day) => (
-          <article key={day.day} className="rounded-lg border border-white/10 bg-card/90 p-4">
+          <article
+            key={day.day}
+            className="hover-lift animate-rise-in rounded-2xl border border-border bg-card/90 p-4"
+          >
             <p className="text-sm text-primary">{day.day}</p>
             <h2 className="text-lg font-semibold tracking-normal">{day.focus}</h2>
             <div className="mt-3 space-y-2">
               {day.exercises.map((exercise) => (
-                <div key={exercise.name} className="rounded-md bg-white/[0.05] p-3 text-sm">
+                <div key={exercise.name} className="rounded-md bg-muted p-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium">{exercise.name}</span>
                     <span className="text-muted-foreground">
@@ -402,7 +411,7 @@ function ChatTab({
   onSend: () => void;
 }) {
   return (
-    <section className="rounded-lg border border-white/10 bg-card/90 p-4">
+    <section className="rounded-2xl border border-border bg-card/90 p-4">
       <div className="flex items-center gap-2">
         <MessageCircle className="size-5 text-primary" aria-hidden="true" />
         <h2 className="text-xl font-semibold tracking-normal">AI Chat</h2>
@@ -415,7 +424,7 @@ function ChatTab({
               "rounded-lg p-3 text-sm",
               message.role === "user"
                 ? "ml-auto max-w-[85%] bg-primary text-primary-foreground"
-                : "mr-auto max-w-[90%] bg-white/[0.06] text-foreground"
+                : "mr-auto max-w-[90%] bg-muted text-foreground"
             )}
           >
             {message.content}
@@ -434,7 +443,7 @@ function ChatTab({
             }
           }}
           placeholder="Ask: Why isn't my weight changing?"
-          className="h-12 min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.05] px-3 text-sm outline-none focus:border-primary/70"
+          className="h-12 min-w-0 flex-1 rounded-xl border border-border bg-muted px-3 text-sm outline-none focus:border-primary/70"
         />
         <Button size="icon" onClick={onSend} aria-label="Send message">
           <Send className="size-4" aria-hidden="true" />
@@ -453,7 +462,7 @@ function ProfileTab({
 }) {
   return (
     <section className="space-y-4">
-      <div className="grid gap-3 rounded-lg border border-white/10 bg-card/90 p-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 rounded-2xl border border-border bg-card/90 p-4 sm:grid-cols-2 lg:grid-cols-3">
         <NumberField
           label="Age"
           value={profile.age}
@@ -553,11 +562,11 @@ function ProfileTab({
         }}
       />
 
-      <section className="grid gap-3 rounded-lg border border-white/10 bg-card/90 p-4 md:grid-cols-2">
+      <section className="grid gap-3 rounded-2xl border border-border bg-card/90 p-4 md:grid-cols-2">
         {Object.entries(profile.dataPermissions).map(([key, enabled]) => (
           <label
             key={key}
-            className="flex items-center justify-between gap-3 rounded-md bg-white/[0.05] px-3 py-2"
+            className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2"
           >
             <span className="capitalize">{key} data access</span>
             <input
@@ -602,7 +611,7 @@ function CoachMetric({
   helper: string;
 }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-card/90 p-4">
+    <div className="rounded-2xl border border-border bg-card/90 p-4">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Icon className="size-4 text-primary" aria-hidden="true" />
         {label}
@@ -615,7 +624,7 @@ function CoachMetric({
 
 function CoachPanel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <article className="rounded-lg border border-white/10 bg-card/90 p-4">
+    <article className="rounded-2xl border border-border bg-card/90 p-4">
       <h2 className="font-semibold tracking-normal">{title}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{children}</p>
     </article>
@@ -634,7 +643,7 @@ function PreferenceGroup({
   onChange: (values: string[]) => void;
 }) {
   return (
-    <section className="rounded-lg border border-white/10 bg-card/90 p-4">
+    <section className="rounded-2xl border border-border bg-card/90 p-4">
       <div className="flex items-center gap-2">
         <Settings2 className="size-4 text-primary" aria-hidden="true" />
         <h2 className="font-semibold tracking-normal">{title}</h2>
@@ -654,8 +663,8 @@ function PreferenceGroup({
               className={cn(
                 "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
                 selected
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-white/10 bg-white/[0.04] text-muted-foreground"
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-muted text-muted-foreground"
               )}
             >
               {option}
@@ -681,7 +690,7 @@ function NumberField({
   return (
     <label className="space-y-2">
       <span className="text-sm font-medium text-muted-foreground">{label}</span>
-      <div className="flex h-11 items-center rounded-md border border-white/10 bg-white/[0.05] focus-within:border-primary/70">
+      <div className="flex h-11 items-center rounded-xl border border-border bg-muted focus-within:border-primary/70">
         <input
           type="number"
           value={value ?? ""}
@@ -715,7 +724,7 @@ function SelectField({
         onChange={(event) => {
           onChange(event.target.value);
         }}
-        className="h-11 w-full rounded-md border border-white/10 bg-white/[0.05] px-3 text-sm outline-none focus:border-primary/70"
+        className="h-11 w-full rounded-xl border border-border bg-muted px-3 text-sm outline-none focus:border-primary/70"
       >
         {options.map((option) => (
           <option key={option} value={option}>

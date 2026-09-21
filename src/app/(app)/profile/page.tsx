@@ -54,12 +54,12 @@ export default async function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-lg border border-white/10 bg-card/80 shadow-lg shadow-black/20">
-        <div className="h-28 bg-[radial-gradient(circle_at_20%_30%,rgba(156,238,58,0.28),transparent_24%),linear-gradient(135deg,rgba(255,255,255,0.12),rgba(255,255,255,0.02))]" />
+      <section className="animate-rise-in overflow-hidden rounded-3xl border border-border bg-card">
+        <div className="h-28 bg-gradient-to-br from-muted to-background" />
         <div className="px-4 pb-5 sm:px-6">
           <div className="-mt-12 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="grid size-24 place-items-center overflow-hidden rounded-full border border-white/15 bg-background text-xl font-semibold text-primary shadow-xl">
+              <div className="grid size-24 place-items-center overflow-hidden rounded-full border border-border bg-background text-xl font-semibold text-foreground shadow-sm">
                 {profile.profileImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={profile.profileImageUrl} alt="" className="size-full object-cover" />
@@ -69,7 +69,7 @@ export default async function ProfilePage() {
               </div>
               <div className="space-y-2">
                 <div>
-                  <h1 className="text-3xl font-semibold tracking-normal">{displayName}</h1>
+                  <h1 className="text-title">{displayName}</h1>
                   <p className="text-sm text-muted-foreground">@{profile.username}</p>
                 </div>
                 {profile.bio ? (
@@ -85,23 +85,26 @@ export default async function ProfilePage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
-        <article className="rounded-lg border border-white/10 bg-card/80 p-4 shadow-lg shadow-black/20">
-          <p className="text-sm font-medium text-primary">Profile completion</p>
+        <article className="hover-lift rounded-2xl border border-border bg-card p-5 sm:p-6">
+          <p className="text-sm font-medium text-muted-foreground">Profile completion</p>
           <div className="mt-4 flex items-end justify-between gap-4">
-            <strong className="text-4xl font-semibold tracking-normal">{completionWidth}</strong>
+            <strong className="text-headline">{completionWidth}</strong>
             <span className="text-sm text-muted-foreground">Ready for dashboard context</span>
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-primary" style={{ width: completionWidth }} />
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-foreground transition-all duration-700"
+              style={{ width: completionWidth }}
+            />
           </div>
         </article>
         <div className="grid gap-3 sm:grid-cols-2">
           {stats.map((item) => (
             <article
               key={item.label}
-              className="rounded-lg border border-white/10 bg-card/80 p-4 shadow-lg shadow-black/20"
+              className="hover-lift rounded-2xl border border-border bg-card p-5 sm:p-6"
             >
-              <div className="mb-3 flex size-10 items-center justify-center rounded-md bg-primary/15 text-primary">
+              <div className="mb-3 flex size-10 items-center justify-center rounded-md bg-muted text-foreground">
                 <item.icon className="size-5" aria-hidden="true" />
               </div>
               <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
@@ -111,8 +114,8 @@ export default async function ProfilePage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-card/80 p-4 shadow-lg shadow-black/20">
-        <p className="text-sm font-medium text-primary">Preferred training style</p>
+      <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <p className="text-sm font-medium text-muted-foreground">Preferred training style</p>
         <h2 className="mt-2 text-2xl font-semibold tracking-normal">
           {profile.preferredStyle ? trainingStyleLabels[profile.preferredStyle] : "Not set"}
         </h2>

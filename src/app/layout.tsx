@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
   display: "swap"
 });
 
+// Runs before first paint to avoid a theme flash. Keep key in sync with use-theme.ts.
+const THEME_INIT_SCRIPT = `(function(){var d=document.documentElement;var t=null;try{t=localStorage.getItem("ascension.theme")}catch(e){}var dark=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);d.classList.toggle("dark",dark)})()`;
+
 export const metadata: Metadata = {
   title: {
     default: "Ascension",
@@ -36,8 +39,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050505",
-  colorScheme: "dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" }
+  ],
+  colorScheme: "light dark",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover"
@@ -45,7 +51,14 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark`}>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body suppressHydrationWarning>
         <ServiceWorkerGuard />
         {children}

@@ -10,7 +10,16 @@ import {
   type ChangeEvent,
   type PointerEvent
 } from "react";
-import { ArrowLeft, ArrowRight, Check, ImagePlus, Move, Trash2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CircleAlert,
+  ImagePlus,
+  Move,
+  Trash2,
+  X
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -497,8 +506,8 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
             className={cn(
               "flex min-h-12 items-center justify-center gap-2 rounded-md border px-2 text-xs font-semibold transition-colors sm:text-sm",
               index <= stepIndex
-                ? "border-primary/60 bg-primary/15 text-primary"
-                : "border-white/10 bg-white/5 text-muted-foreground"
+                ? "border-foreground bg-foreground text-background"
+                : "border-border bg-muted text-muted-foreground"
             )}
           >
             <span className="bg-current/10 grid size-6 place-items-center rounded-full">
@@ -509,7 +518,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
         ))}
       </div>
 
-      <section className="rounded-lg border border-white/10 bg-card/80 p-4 shadow-lg shadow-black/20 sm:p-6">
+      <section className="rounded-lg border border-border bg-card p-4 sm:p-6">
         {stepIndex === 0 ? (
           <div className="grid gap-5">
             <div>
@@ -522,7 +531,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
             </div>
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
               <div className="grid gap-3">
-                <div className="grid size-32 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-lg shadow-black/20">
+                <div className="grid size-32 place-items-center overflow-hidden rounded-full border border-border bg-muted">
                   {committedAvatarDataUrl && !avatarRemoved ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={committedAvatarDataUrl} alt="" className="size-full object-cover" />
@@ -534,7 +543,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
               </div>
               <div className="min-w-0 flex-1 space-y-4">
                 <div className="flex flex-wrap gap-2">
-                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-white/5 px-4 text-sm font-medium transition-colors hover:bg-white/10">
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-border bg-muted px-4 text-sm font-medium transition-colors hover:bg-accent">
                     <ImagePlus className="size-4" aria-hidden="true" />
                     Upload picture
                     <input
@@ -559,7 +568,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                   </Button>
                 </div>
                 {draftAvatarDataUrl ? (
-                  <div className="grid gap-4 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                  <div className="grid gap-4 rounded-lg border border-border bg-muted p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-foreground">Adjust round frame</p>
@@ -579,7 +588,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                       <div
                         ref={editorRef}
                         className={cn(
-                          "relative aspect-square w-full max-w-sm touch-none select-none overflow-hidden rounded-lg border border-white/10 bg-black/40",
+                          "relative aspect-square w-full max-w-sm touch-none select-none overflow-hidden rounded-lg border border-border bg-muted",
                           isDraggingAvatar ? "cursor-grabbing" : "cursor-grab"
                         )}
                         onPointerDown={onAvatarPointerDown}
@@ -610,7 +619,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                           }}
                         />
                         <div
-                          className="pointer-events-none absolute left-1/2 top-1/2 rounded-full border-2 border-primary shadow-[0_0_0_1px_rgba(255,255,255,0.24),0_0_28px_rgba(156,238,58,0.20)]"
+                          className="pointer-events-none absolute left-1/2 top-1/2 rounded-full border-2 border-primary shadow-[0_0_0_1px_rgba(255,255,255,0.5)]"
                           style={{
                             width: `${String(cropDiameter)}px`,
                             height: `${String(cropDiameter)}px`,
@@ -619,7 +628,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                         />
                       </div>
                       <div className="grid justify-items-start gap-2 lg:justify-items-center">
-                        <div className="grid size-20 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-lg shadow-black/20">
+                        <div className="grid size-20 place-items-center overflow-hidden rounded-full border border-border bg-muted">
                           {draftPreviewDataUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -659,7 +668,12 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                     </div>
                   </div>
                 ) : null}
-                {avatarError ? <p className="text-xs text-destructive">{avatarError}</p> : null}
+                {avatarError ? (
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <CircleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+                    {avatarError}
+                  </p>
+                ) : null}
                 <p className="text-xs text-muted-foreground">PNG, JPG, or WebP under 5 MB.</p>
               </div>
             </div>
@@ -820,7 +834,7 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
             />
             <div className="grid gap-3 sm:grid-cols-2">
               {summaryItems.map(([label, value]) => (
-                <div key={label} className="rounded-md border border-white/10 bg-white/[0.04] p-3">
+                <div key={label} className="rounded-md border border-border bg-muted p-3">
                   <p className="text-xs font-medium text-muted-foreground">{label}</p>
                   <p className="mt-1 text-sm font-semibold text-foreground">
                     {value === "" ? "Not set" : value}
@@ -828,7 +842,15 @@ export function ProfileSetupForm({ profile, fallbackUser }: ProfileSetupFormProp
                 </div>
               ))}
             </div>
-            {state.message ? <p className="text-sm text-destructive">{state.message}</p> : null}
+            {state.message ? (
+              <p
+                role="alert"
+                className="flex items-center gap-2 text-sm font-semibold text-foreground"
+              >
+                <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                {state.message}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </section>
@@ -931,7 +953,7 @@ function TextField({
   return (
     <label className="block space-y-2 text-sm">
       <span className="font-medium text-foreground">{label}</span>
-      <span className="flex items-center overflow-hidden rounded-md border border-white/10 bg-white/[0.04] focus-within:ring-2 focus-within:ring-ring">
+      <span className="flex items-center overflow-hidden rounded-md border border-border bg-muted transition-shadow focus-within:border-foreground focus-within:ring-2 focus-within:ring-ring">
         <input
           name={name}
           type={type}
@@ -945,7 +967,12 @@ function TextField({
         />
         {suffix ? <span className="px-3 text-xs text-muted-foreground">{suffix}</span> : null}
       </span>
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+      {error ? (
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <CircleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -967,7 +994,7 @@ function SelectField({
         onChange={(event) => {
           onChange(name, event.target.value);
         }}
-        className="min-h-11 w-full rounded-md border border-white/10 bg-card px-3 text-foreground outline-none focus:ring-2 focus:ring-ring"
+        className="min-h-11 w-full rounded-md border border-border bg-card px-3 text-foreground outline-none transition-shadow focus:border-foreground focus:ring-2 focus:ring-ring"
       >
         {options.map(([optionValue, optionLabel]) => (
           <option key={optionValue === "" ? "empty" : optionValue} value={optionValue}>
@@ -975,7 +1002,12 @@ function SelectField({
           </option>
         ))}
       </select>
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+      {error ? (
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <CircleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -990,10 +1022,15 @@ function TextArea({ label, name, value, error, onChange }: FieldProps) {
         onChange={(event) => {
           onChange(name, event.target.value);
         }}
-        className="min-h-28 w-full rounded-md border border-white/10 bg-white/[0.04] px-3 py-3 text-foreground outline-none focus:ring-2 focus:ring-ring"
+        className="min-h-28 w-full rounded-md border border-border bg-muted px-3 py-3 text-foreground outline-none focus:ring-2 focus:ring-ring"
         maxLength={280}
       />
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+      {error ? (
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <CircleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }

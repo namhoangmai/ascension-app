@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogOut, UserCircle } from "lucide-react";
 
+import { ThemeToggle } from "@/components/shared/theme-toggle";
 import type { ProfileWithUser } from "@/features/profile/types";
 import { displayNameForProfile } from "@/features/profile/types";
 import { signOutCurrentUserAction } from "@/lib/auth/actions";
@@ -22,19 +23,23 @@ export function AppShell({ children, profile }: AppShellProps) {
     .join("");
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(156,238,58,0.10),transparent_30%),linear-gradient(180deg,#111,#050505_55%)]">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col">
-        <header className="sticky top-0 z-30 border-b border-white/10 bg-background/80 px-4 py-4 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 border-b border-border/60 bg-background/70 px-4 py-3 backdrop-blur-xl backdrop-saturate-150 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
-            <Link href="/dashboard" className="text-lg font-semibold tracking-normal">
+            <Link
+              href="/dashboard"
+              className="rounded-full text-lg font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
               Ascension
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <ThemeToggle />
               <Link
                 href="/profile"
-                className="inline-flex min-h-10 items-center gap-3 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-foreground transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="press inline-flex min-h-10 items-center gap-2.5 rounded-full border border-border bg-muted/60 py-1 pl-1.5 pr-3 text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="grid size-7 place-items-center overflow-hidden rounded-full bg-primary/15 text-xs font-semibold text-primary">
+                <span className="grid size-7 place-items-center overflow-hidden rounded-full bg-foreground text-xs font-semibold text-background">
                   {profile.profileImageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={profile.profileImageUrl} alt="" className="size-full object-cover" />
@@ -49,7 +54,7 @@ export function AppShell({ children, profile }: AppShellProps) {
               <form action={signOutCurrentUserAction}>
                 <button
                   type="submit"
-                  className="inline-flex size-10 items-center justify-center rounded-md border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="press inline-flex size-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label="Sign out"
                 >
                   <LogOut className="size-4" aria-hidden="true" />
@@ -58,16 +63,21 @@ export function AppShell({ children, profile }: AppShellProps) {
             </div>
           </div>
         </header>
-        <main className="safe-page flex-1 px-4 py-5 sm:px-6 lg:px-8">{children}</main>
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-background/90 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur-xl md:hidden">
+        <main className="safe-page animate-fade-in flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          {children}
+        </main>
+        <nav
+          aria-label="Primary"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/75 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur-xl backdrop-saturate-150 md:hidden"
+        >
           <div className="mx-auto grid max-w-lg grid-cols-8">
             {primaryNavigation.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex min-h-12 flex-col items-center justify-center gap-1 rounded-md text-[11px] font-medium text-muted-foreground",
-                  "transition-colors hover:bg-white/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  "press flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium text-muted-foreground",
+                  "transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 )}
               >
                 <item.icon className="size-5" aria-hidden="true" />

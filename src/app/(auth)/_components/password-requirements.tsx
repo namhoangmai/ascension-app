@@ -21,7 +21,7 @@ export function PasswordRequirements({ password }: PasswordRequirementsProps) {
               key={requirement.id}
               className={cn(
                 "flex items-center gap-2 transition-colors",
-                met ? "text-primary" : "text-muted-foreground"
+                met ? "font-medium text-foreground" : "text-muted-foreground"
               )}
             >
               {met ? (

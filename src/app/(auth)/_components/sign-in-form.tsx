@@ -7,6 +7,7 @@ import { signInWithPasswordAction } from "@/lib/auth/actions";
 import type { AuthActionState } from "@/lib/auth/server";
 
 import { FormField } from "./form-field";
+import { FormMessage } from "./form-message";
 import { SubmitButton } from "./submit-button";
 
 const initialState: AuthActionState = { status: "idle" };
@@ -38,15 +39,18 @@ export function SignInForm() {
             type="checkbox"
             name="remember"
             defaultChecked
-            className="size-4 rounded border-white/20 bg-white/10 accent-primary"
+            className="size-4 rounded border-border accent-foreground"
           />
           Remember me
         </label>
-        <Link href="/forgot-password" className="font-medium text-primary">
+        <Link
+          href="/forgot-password"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
+        >
           Forgot password?
         </Link>
       </div>
-      {state.message ? <p className="text-sm text-destructive">{state.message}</p> : null}
+      {state.message ? <FormMessage tone="error">{state.message}</FormMessage> : null}
       <SubmitButton>Sign in</SubmitButton>
     </form>
   );

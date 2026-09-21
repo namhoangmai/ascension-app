@@ -6,6 +6,7 @@ import { signUpWithPasswordAction } from "@/lib/auth/actions";
 import type { AuthActionState } from "@/lib/auth/server";
 
 import { FormField } from "./form-field";
+import { FormMessage } from "./form-message";
 import { PasswordRequirements } from "./password-requirements";
 import { SubmitButton } from "./submit-button";
 
@@ -76,11 +77,11 @@ export function SignUpForm() {
           type="checkbox"
           name="remember"
           defaultChecked
-          className="size-4 rounded border-white/20 bg-white/10 accent-primary"
+          className="size-4 rounded border-border accent-foreground"
         />
         Remember this device
       </label>
-      {state.message ? <p className="text-sm text-destructive">{state.message}</p> : null}
+      {state.message ? <FormMessage tone="error">{state.message}</FormMessage> : null}
       <SubmitButton>Create account</SubmitButton>
     </form>
   );

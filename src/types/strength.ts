@@ -29,6 +29,7 @@ export interface StrengthWorkout {
   createdAt: number;
   updatedAt: number;
   sourceTemplateId?: string;
+  status?: "in_progress" | "completed";
 }
 
 export interface StrengthTemplate {

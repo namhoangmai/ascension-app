@@ -9,6 +9,8 @@ export interface StrengthActionResult {
   status: "success" | "error";
   message?: string;
   workout?: StrengthWorkout;
+  /** Set when a "continue" save is rejected because another in-progress session exists. */
+  inProgressWorkoutId?: string;
 }
 
 function dateKey(date: Date) {
@@ -19,18 +21,28 @@ function timeKey(date: Date) {
   return date.toISOString().slice(11, 16);
 }
 
+// Date/time strings are wall-clock values from the client. They are stored as UTC
+// ("Z") so parsing here is symmetric with dateKey/timeKey (which read UTC), and
+// does not depend on the server's timezone.
 function startedAtForWorkout(workout: StrengthWorkout) {
-  return new Date(`${workout.date}T${workout.startTime || "00:00"}:00.000`);
+  return new Date(`${workout.date}T${workout.startTime || "00:00"}:00.000Z`);
 }
 
-function completedAtForWorkout(workout: StrengthWorkout) {
+function completedAtForWorkout(workout: StrengthWorkout, startedAt: Date) {
   if (!workout.endTime) {
-    return null;
+    return new Date();
   }
 
-  const completedAt = new Date(`${workout.date}T${workout.endTime}:00.000`);
+  const completedAt = new Date(`${workout.date}T${workout.endTime}:00.000Z`);
 
-  return Number.isNaN(completedAt.getTime()) ? null : completedAt;
+  if (Number.isNaN(completedAt.getTime())) {
+    return new Date();
+  }
+
+  // End time earlier than start time means the session crossed midnight.
+  return completedAt < startedAt
+    ? new Date(completedAt.getTime() + 24 * 60 * 60 * 1000)
+    : completedAt;
 }
 
 function setTypeForStrengthSet(set: StrengthSet) {
@@ -60,6 +72,12 @@ function strengthSetKind(type: SetType): NonNullable<StrengthSet["kind"]> {
   }
 }
 
+class InProgressExistsError extends Error {
+  constructor(readonly workoutId: string) {
+    super("IN_PROGRESS_WORKOUT_EXISTS");
+  }
+}
+
 function toNumber(value: Prisma.Decimal | null) {
   return value?.toNumber() ?? null;
 }
@@ -78,6 +96,7 @@ function toStrengthWorkout(session: {
   id: string;
   name: string;
   notes: string | null;
+  status: SessionStatus;
   startedAt: Date;
   completedAt: Date | null;
   createdAt: Date;
@@ -106,6 +125,7 @@ function toStrengthWorkout(session: {
     startTime: timeKey(session.startedAt),
     endTime: session.completedAt ? timeKey(session.completedAt) : "",
     name: session.name,
+    status: session.status === SessionStatus.IN_PROGRESS ? "in_progress" : "completed",
     notes: session.notes ?? "",
     createdAt: session.createdAt.getTime(),
     updatedAt: session.updatedAt.getTime(),
@@ -139,7 +159,7 @@ function toStrengthWorkout(session: {
 }
 
 async function upsertPrivateExercise(tx: Prisma.TransactionClient, userId: string, name: string) {
-  const trimmedName = name.trim() || "Untitled Exercise";
+  const trimmedName = name.trim() || "Exercise";
   const slug = slugifyName(trimmedName);
   const sourceKey = `user:${userId}:exercise:${slug}`;
 
@@ -186,16 +206,22 @@ export async function listStrengthWorkouts() {
     }
   });
 
-  return sessions.map(toStrengthWorkout);
+  return sessions.map(toStrengthWorkout).sort((a, b) => {
+    const aActive = a.status === "in_progress" ? 0 : 1;
+    const bActive = b.status === "in_progress" ? 0 : 1;
+
+    return aActive - bActive;
+  });
 }
 
-export async function saveStrengthWorkout(workout: StrengthWorkout): Promise<StrengthActionResult> {
-  "use server";
-
+export async function saveStrengthWorkout(
+  workout: StrengthWorkout,
+  intent: "continue" | "end"
+): Promise<StrengthActionResult> {
   const user = await requireUser();
   const exercises = workout.exercises.filter((exercise) => exercise.name.trim());
 
-  if (exercises.length === 0) {
+  if (intent === "end" && exercises.length === 0) {
     return {
       status: "error",
       message: "Add at least one exercise before saving."
@@ -204,32 +230,57 @@ export async function saveStrengthWorkout(workout: StrengthWorkout): Promise<Str
 
   try {
     const savedWorkout = await prisma.$transaction(async (tx) => {
+      // Serialize saves per user so the "one in-progress workout" check-then-insert below
+      // cannot race. Transaction-scoped advisory lock, released on commit/rollback.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`strength-save:${user.id}`}))`;
+
       const existingSession = await tx.workoutSession.findUnique({
         where: { id: workout.id },
-        select: { userId: true }
+        select: { userId: true, status: true }
       });
 
       if (existingSession && existingSession.userId !== user.id) {
         throw new Error("UNAUTHORIZED_WORKOUT_SAVE");
       }
 
+      if (intent === "continue") {
+        if (existingSession?.status === SessionStatus.COMPLETED) {
+          throw new Error("WORKOUT_ALREADY_COMPLETED");
+        }
+
+        if (!existingSession) {
+          const otherActive = await tx.workoutSession.findFirst({
+            where: { userId: user.id, status: SessionStatus.IN_PROGRESS, id: { not: workout.id } },
+            select: { id: true }
+          });
+
+          if (otherActive) {
+            throw new InProgressExistsError(otherActive.id);
+          }
+        }
+      }
+
+      const startedAt = startedAtForWorkout(workout);
+      const status = intent === "end" ? SessionStatus.COMPLETED : SessionStatus.IN_PROGRESS;
+      const completedAt = intent === "end" ? completedAtForWorkout(workout, startedAt) : null;
+
       const session = await tx.workoutSession.upsert({
         where: { id: workout.id },
         create: {
           id: workout.id,
           userId: user.id,
-          name: nullableTrimmed(workout.name) ?? "Workout",
+          name: nullableTrimmed(workout.name) ?? "Workout Session",
           notes: nullableTrimmed(workout.notes),
-          status: SessionStatus.COMPLETED,
-          startedAt: startedAtForWorkout(workout),
-          completedAt: completedAtForWorkout(workout)
+          status,
+          startedAt,
+          completedAt
         },
         update: {
-          name: nullableTrimmed(workout.name) ?? "Workout",
+          name: nullableTrimmed(workout.name) ?? "Workout Session",
           notes: nullableTrimmed(workout.notes),
-          status: SessionStatus.COMPLETED,
-          startedAt: startedAtForWorkout(workout),
-          completedAt: completedAtForWorkout(workout)
+          status,
+          startedAt,
+          completedAt
         }
       });
 
@@ -290,6 +341,21 @@ export async function saveStrengthWorkout(workout: StrengthWorkout): Promise<Str
       workout: toStrengthWorkout(savedWorkout)
     };
   } catch (error) {
+    if (error instanceof InProgressExistsError) {
+      return {
+        status: "error",
+        message: "You already have a workout in progress. Resume or cancel it first.",
+        inProgressWorkoutId: error.workoutId
+      };
+    }
+
+    if (error instanceof Error && error.message === "WORKOUT_ALREADY_COMPLETED") {
+      return {
+        status: "error",
+        message: "This workout is already completed."
+      };
+    }
+
     if (error instanceof Error && error.message === "UNAUTHORIZED_WORKOUT_SAVE") {
       return {
         status: "error",
@@ -305,8 +371,6 @@ export async function saveStrengthWorkout(workout: StrengthWorkout): Promise<Str
 }
 
 export async function deleteStrengthWorkout(workoutId: string): Promise<StrengthActionResult> {
-  "use server";
-
   const user = await requireUser();
 
   if (!workoutId.trim()) {
@@ -338,6 +402,53 @@ export async function deleteStrengthWorkout(workoutId: string): Promise<Strength
     return {
       status: "error",
       message: "Unable to delete workout session right now."
+    };
+  }
+}
+
+export async function cancelInProgressStrengthWorkout(
+  workoutId: string
+): Promise<StrengthActionResult> {
+  const user = await requireUser();
+
+  if (!workoutId.trim()) {
+    return {
+      status: "error",
+      message: "Workout session id is required."
+    };
+  }
+
+  try {
+    const existing = await prisma.workoutSession.findUnique({
+      where: { id: workoutId },
+      select: { userId: true, status: true }
+    });
+
+    if (existing?.userId !== user.id) {
+      return {
+        status: "error",
+        message: "Workout session was not found or does not belong to you."
+      };
+    }
+
+    if (existing.status !== SessionStatus.IN_PROGRESS) {
+      return {
+        status: "error",
+        message: "Only in-progress workouts can be cancelled."
+      };
+    }
+
+    await prisma.workoutSession.deleteMany({
+      where: { id: workoutId, userId: user.id, status: SessionStatus.IN_PROGRESS }
+    });
+
+    revalidatePath("/strength");
+
+    return { status: "success" };
+  } catch {
+    return {
+      status: "error",
+      message: "Unable to cancel workout right now."
     };
   }
 }

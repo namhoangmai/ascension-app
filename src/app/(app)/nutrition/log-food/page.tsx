@@ -384,14 +384,14 @@ export default function LogFoodPage() {
             Nutrition
           </Link>
         </Button>
-        <div className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-muted-foreground">
+        <div className="rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground">
           {dateKey}
         </div>
       </header>
 
-      <section className="rounded-2xl border border-white/10 bg-card/90 p-4 shadow-xl shadow-black/20 sm:p-6">
+      <section className="rounded-2xl border border-border bg-card/90 p-4 shadow-sm sm:p-6">
         <div className="flex items-center gap-3">
-          <div className="grid size-11 place-items-center rounded-full bg-primary/15 text-primary">
+          <div className="grid size-11 place-items-center rounded-full bg-foreground text-background">
             <Utensils className="size-5" aria-hidden="true" />
           </div>
           <div>
@@ -402,13 +402,13 @@ export default function LogFoodPage() {
       </section>
 
       {statusMessage ? (
-        <p className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+        <p className="rounded-xl border border-border bg-muted px-4 py-3 text-sm font-medium text-primary">
           {statusMessage}
         </p>
       ) : null}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
-        <section className="rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6 lg:col-span-2">
+        <section className="rounded-2xl border border-border bg-card/80 p-4 sm:p-6 lg:col-span-2">
           <h2 className="text-lg font-semibold">Add food</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Create foods you eat often with nutrition per 100g.
@@ -421,7 +421,7 @@ export default function LogFoodPage() {
                 setFoodForm((form) => ({ ...form, name: event.target.value }));
               }}
               placeholder="Food name"
-              className="h-12 w-full rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
+              className="h-12 w-full rounded-xl border border-border bg-background/70 px-4 outline-none"
             />
             <select
               value={foodForm.category}
@@ -432,7 +432,7 @@ export default function LogFoodPage() {
                 }));
               }}
               aria-label="Food category"
-              className="h-12 w-full rounded-xl border border-white/10 bg-background px-4 outline-none"
+              className="h-12 w-full rounded-xl border border-border bg-background px-4 outline-none"
             >
               {FOOD_CATEGORIES.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -462,14 +462,14 @@ export default function LogFoodPage() {
                             ? "Carbs"
                             : "Fat"
                     }
-                    className="h-12 rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
+                    className="h-12 rounded-xl border border-border bg-background/70 px-4 outline-none"
                   />
                 )
               )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
-              <div className="grid size-20 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
+              <div className="grid size-20 place-items-center overflow-hidden rounded-xl border border-border bg-muted">
                 {foodPhotoDataUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={foodPhotoDataUrl} alt="" className="size-full object-cover" />
@@ -478,7 +478,7 @@ export default function LogFoodPage() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-sm font-medium transition-colors hover:bg-white/10">
+                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted px-3 text-sm font-medium transition-colors hover:bg-accent">
                   <ImagePlus className="size-4" aria-hidden="true" />
                   {foodPhotoDataUrl ? "Change photo" : "Add photo (optional)"}
                   <input
@@ -512,9 +512,9 @@ export default function LogFoodPage() {
           </form>
         </section>
 
-        <section className="rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6 lg:col-span-1">
+        <section className="rounded-2xl border border-border bg-card/80 p-4 sm:p-6 lg:col-span-1">
           <div className="flex items-center gap-3">
-            <div className="bg-white/8 grid size-10 place-items-center rounded-full">
+            <div className="grid size-10 place-items-center rounded-full bg-muted">
               <Utensils className="size-5 text-primary" aria-hidden="true" />
             </div>
             <div>
@@ -556,14 +556,14 @@ export default function LogFoodPage() {
             )}
           </div>
 
-          <div className="mt-5 space-y-3 border-t border-white/10 pt-4">
+          <div className="mt-5 space-y-3 border-t border-border pt-4">
             <input
               value={mealName}
               onChange={(event) => {
                 setMealName(event.target.value);
               }}
               placeholder="Meal name"
-              className="h-12 w-full rounded-xl border border-white/10 bg-background/70 px-4 outline-none"
+              className="h-12 w-full rounded-xl border border-border bg-background/70 px-4 outline-none"
             />
             <div className="grid grid-cols-[1fr_88px] gap-3">
               <select
@@ -571,7 +571,7 @@ export default function LogFoodPage() {
                 onChange={(event) => {
                   setMealFoodId(event.target.value);
                 }}
-                className="h-12 min-w-0 rounded-xl border border-white/10 bg-background px-3 outline-none"
+                className="h-12 min-w-0 rounded-xl border border-border bg-background px-3 outline-none"
               >
                 {foods.map((food) => (
                   <option key={food.id} value={food.id}>
@@ -589,7 +589,7 @@ export default function LogFoodPage() {
                   setMealGrams(Number(event.target.value));
                 }}
                 aria-label="Meal food grams"
-                className="h-12 rounded-xl border border-white/10 bg-background/70 px-3 text-right outline-none"
+                className="h-12 rounded-xl border border-border bg-background/70 px-3 text-right outline-none"
               />
             </div>
 
@@ -629,7 +629,7 @@ export default function LogFoodPage() {
         </section>
       </div>
 
-      <section className="rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6">
+      <section className="rounded-2xl border border-border bg-card/80 p-4 sm:p-6">
         <h2 className="text-lg font-semibold">Food database</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Every food, grouped by category. Scroll within a column to see more.
@@ -639,9 +639,9 @@ export default function LogFoodPage() {
           {foodsByCategory.map((category) => (
             <div
               key={category.id}
-              className="flex flex-col rounded-xl border border-white/10 bg-background/60"
+              className="flex flex-col rounded-xl border border-border bg-background/60"
             >
-              <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
                 <h3 className="text-sm font-semibold">{category.label}</h3>
                 <span className="text-xs text-muted-foreground">
                   {String(category.foods.length)}
@@ -657,7 +657,7 @@ export default function LogFoodPage() {
                         <form
                           key={food.id}
                           onSubmit={handleSaveEditFood}
-                          className="space-y-2 rounded-lg border border-primary/30 bg-white/5 p-2"
+                          className="space-y-2 rounded-lg border border-primary/30 bg-muted p-2"
                         >
                           <input
                             value={editForm.name}
@@ -665,7 +665,7 @@ export default function LogFoodPage() {
                               setEditForm((form) => ({ ...form, name: event.target.value }));
                             }}
                             placeholder="Food name"
-                            className="h-9 w-full rounded-lg border border-white/10 bg-background/70 px-2 text-xs outline-none"
+                            className="h-9 w-full rounded-lg border border-border bg-background/70 px-2 text-xs outline-none"
                           />
                           <select
                             value={editForm.category}
@@ -676,7 +676,7 @@ export default function LogFoodPage() {
                               }));
                             }}
                             aria-label="Food category"
-                            className="h-9 w-full rounded-lg border border-white/10 bg-background px-2 text-xs outline-none"
+                            className="h-9 w-full rounded-lg border border-border bg-background px-2 text-xs outline-none"
                           >
                             {FOOD_CATEGORIES.map((option) => (
                               <option key={option.id} value={option.id}>
@@ -712,7 +712,7 @@ export default function LogFoodPage() {
                                         ? "Carbs"
                                         : "Fat"
                                 }
-                                className="h-9 rounded-lg border border-white/10 bg-background/70 px-2 text-xs outline-none"
+                                className="h-9 rounded-lg border border-border bg-background/70 px-2 text-xs outline-none"
                               />
                             ))}
                           </div>
@@ -740,7 +740,7 @@ export default function LogFoodPage() {
                     return (
                       <div
                         key={food.id}
-                        className="flex items-start justify-between gap-2 rounded-lg bg-white/5 px-2.5 py-2 text-xs leading-snug"
+                        className="flex items-start justify-between gap-2 rounded-lg bg-muted px-2.5 py-2 text-xs leading-snug"
                       >
                         <div className="min-w-0">
                           <p className="truncate font-medium text-foreground">{food.name}</p>
@@ -755,7 +755,7 @@ export default function LogFoodPage() {
                             onClick={() => {
                               handleStartEditFood(food);
                             }}
-                            className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+                            className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                           >
                             <Pencil className="size-3.5" aria-hidden="true" />
                           </button>

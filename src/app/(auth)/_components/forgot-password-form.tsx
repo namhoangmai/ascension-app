@@ -6,6 +6,7 @@ import { requestPasswordResetAction } from "@/lib/auth/actions";
 import type { AuthActionState } from "@/lib/auth/server";
 
 import { FormField } from "./form-field";
+import { FormMessage } from "./form-message";
 import { SubmitButton } from "./submit-button";
 
 const initialState: AuthActionState = { status: "idle" };
@@ -24,13 +25,9 @@ export function ForgotPasswordForm() {
         required
       />
       {state.message ? (
-        <p
-          className={
-            state.status === "success" ? "text-sm text-primary" : "text-sm text-destructive"
-          }
-        >
+        <FormMessage tone={state.status === "success" ? "success" : "error"}>
           {state.message}
-        </p>
+        </FormMessage>
       ) : null}
       {state.resetUrl ? (
         <a

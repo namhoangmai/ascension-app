@@ -242,12 +242,12 @@ export function BodyProgressClient() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-primary">Private Progress</p>
-          <h1 className="text-3xl font-semibold tracking-normal">Body Progress</h1>
+          <h1 className="text-title font-semibold">Body Progress</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Track weight, measurements, photos, and journal notes in one private progress timeline.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-1 rounded-md border border-white/10 bg-white/[0.04] p-1 sm:flex">
+        <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted p-1 sm:flex">
           {[
             ["overview", "Overview"],
             ["checkins", "Check-ins"],
@@ -264,7 +264,7 @@ export function BodyProgressClient() {
                 "min-h-10 rounded-md px-3 text-sm font-medium transition-colors",
                 activeTab === value
                   ? "bg-primary text-primary-foreground"
-                  : "hover:bg-white/8 text-muted-foreground"
+                  : "text-muted-foreground hover:bg-accent"
               )}
             >
               {label}
@@ -456,7 +456,7 @@ function OverviewTab({
         />
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-card/90 p-4">
+      <section className="rounded-2xl border border-border bg-card/90 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold tracking-normal">Weight Trend</h2>
           <RangePicker range={range} onChange={onRangeChange} />
@@ -464,26 +464,32 @@ function OverviewTab({
         <div className="mt-4 h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trendPoints} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+              <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
               <XAxis
                 dataKey="date"
-                stroke="rgba(255,255,255,0.45)"
+                stroke="hsl(var(--muted-foreground))"
                 fontSize={12}
                 tickLine={false}
               />
-              <YAxis stroke="rgba(255,255,255,0.45)" fontSize={12} tickLine={false} width={44} />
+              <YAxis
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickLine={false}
+                width={44}
+              />
               <Tooltip contentStyle={tooltipStyle} />
               <Line
                 type="monotone"
                 dataKey="weight"
-                stroke="#9cee3a"
+                stroke="hsl(var(--foreground))"
                 strokeWidth={3}
                 dot={{ r: 4 }}
               />
               <Line
                 type="monotone"
                 dataKey="bodyFat"
-                stroke="#38bdf8"
+                stroke="hsl(var(--foreground) / 0.6)"
+                strokeDasharray="6 4"
                 strokeWidth={2}
                 dot={{ r: 3 }}
               />
@@ -492,7 +498,8 @@ function OverviewTab({
                   key={measurement}
                   type="monotone"
                   dataKey={measurement}
-                  stroke={["#fbbf24", "#f472b6", "#34d399", "#a78bfa", "#fb7185"][index % 5]}
+                  stroke={`hsl(var(--foreground) / ${String([0.45, 0.35, 0.5, 0.3, 0.4][index % 5] ?? 0.4)})`}
+                  strokeDasharray={["2 3", "8 3 2 3", "1 4", "10 4", "4 2"][index % 5]}
                   strokeWidth={2}
                   dot={{ r: 3 }}
                 />
@@ -511,10 +518,10 @@ function OverviewTab({
                 onToggleMeasurement(field.key);
               }}
               className={cn(
-                "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                "press rounded-full border px-4 py-2 text-sm font-medium transition-colors",
                 selectedMeasurements.includes(field.key)
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-white/10 bg-white/[0.04] text-muted-foreground"
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-muted text-muted-foreground"
               )}
             >
               {field.label}
@@ -524,7 +531,7 @@ function OverviewTab({
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="rounded-lg border border-white/10 bg-card/90 p-4">
+        <section className="rounded-2xl border border-border bg-card/90 p-4">
           <h2 className="text-lg font-semibold tracking-normal">Latest Measurements</h2>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {BODY_MEASUREMENT_FIELDS.filter(
@@ -534,7 +541,7 @@ function OverviewTab({
               .map((field) => (
                 <div
                   key={field.key}
-                  className="flex justify-between rounded-md bg-white/[0.05] px-3 py-2 text-sm"
+                  className="flex justify-between rounded-md bg-muted px-3 py-2 text-sm"
                 >
                   <span className="text-muted-foreground">{field.label}</span>
                   <span className="font-medium">
@@ -545,7 +552,7 @@ function OverviewTab({
           </div>
         </section>
 
-        <section className="rounded-lg border border-white/10 bg-card/90 p-4">
+        <section className="rounded-2xl border border-border bg-card/90 p-4">
           <h2 className="text-lg font-semibold tracking-normal">Latest Journal</h2>
           {latestJournal ? (
             <div className="mt-3">
@@ -563,7 +570,7 @@ function OverviewTab({
         </section>
       </div>
 
-      <section className="rounded-lg border border-white/10 bg-card/90 p-4">
+      <section className="rounded-2xl border border-border bg-card/90 p-4">
         <div className="flex items-center gap-2">
           <Shield className="size-4 text-primary" aria-hidden="true" />
           <h2 className="text-lg font-semibold tracking-normal">Latest Photos</h2>
@@ -600,7 +607,10 @@ function CheckInsTab({
       </div>
       <div className="space-y-3">
         {checkIns.map((checkIn) => (
-          <article key={checkIn.id} className="rounded-lg border border-white/10 bg-card/90 p-4">
+          <article
+            key={checkIn.id}
+            className="hover-lift animate-rise-in rounded-2xl border border-border bg-card/90 p-4"
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm text-muted-foreground">{checkIn.time}</p>
@@ -671,7 +681,7 @@ function PhotosTab({
 
   return (
     <section className="space-y-5">
-      <div className="rounded-lg border border-white/10 bg-card/90 p-4">
+      <div className="rounded-2xl border border-border bg-card/90 p-4">
         <div className="flex items-center gap-2">
           <Lock className="size-4 text-primary" aria-hidden="true" />
           <h2 className="text-lg font-semibold tracking-normal">Photo Comparison</h2>
@@ -724,7 +734,7 @@ function PhotosTab({
             onClick={() => {
               onOpenGallery(checkIn.id);
             }}
-            className="w-full rounded-lg border border-white/10 bg-card/90 p-4 text-left transition-colors hover:border-primary/50"
+            className="w-full rounded-2xl border border-border bg-card/90 p-4 text-left transition-colors hover:border-foreground/40"
           >
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -783,7 +793,10 @@ function JournalTab({
       </div>
       <div className="space-y-3">
         {entries.map((entry) => (
-          <article key={entry.id} className="rounded-lg border border-white/10 bg-card/90 p-4">
+          <article
+            key={entry.id}
+            className="hover-lift animate-rise-in rounded-2xl border border-border bg-card/90 p-4"
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm text-muted-foreground">{formatBodyDate(entry.date, true)}</p>
@@ -802,7 +815,7 @@ function JournalTab({
               </Button>
             </div>
             {entry.workoutSummary ? (
-              <div className="mt-3 rounded-md border border-white/10 bg-background/50 p-3 text-sm">
+              <div className="mt-3 rounded-md border border-border bg-background/50 p-3 text-sm">
                 <p className="font-medium">{entry.workoutSummary.name}</p>
                 <p className="text-muted-foreground">{entry.workoutSummary.exercises.join(", ")}</p>
               </div>
@@ -858,7 +871,7 @@ function CheckInEditor({
 
   return (
     <ModalShell title="New Check-in" eyebrow="Body Progress" onClose={onClose}>
-      <section className="grid gap-3 rounded-md border border-white/10 bg-background/50 p-3 sm:grid-cols-2">
+      <section className="grid gap-3 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-2">
         <TextField
           label="Date"
           type="date"
@@ -909,12 +922,12 @@ function CheckInEditor({
             onChange={(event) => {
               onChange({ ...draft, notes: event.target.value, updatedAt: Date.now() });
             }}
-            className="min-h-24 w-full rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-sm outline-none focus:border-primary/70"
+            className="min-h-24 w-full rounded-xl border border-border bg-muted px-3 py-2 text-sm outline-none focus:border-primary/70"
           />
         </label>
       </section>
 
-      <section className="rounded-md border border-white/10 bg-background/50 p-3">
+      <section className="rounded-md border border-border bg-background/50 p-3">
         <h3 className="font-semibold">Measurements</h3>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {BODY_MEASUREMENT_FIELDS.map((field) => (
@@ -935,7 +948,7 @@ function CheckInEditor({
         </div>
       </section>
 
-      <section className="rounded-md border border-white/10 bg-background/50 p-3">
+      <section className="rounded-md border border-border bg-background/50 p-3">
         <div className="flex items-center gap-2">
           <Shield className="size-4 text-primary" aria-hidden="true" />
           <h3 className="font-semibold">Private Photos</h3>
@@ -947,7 +960,7 @@ function CheckInEditor({
           {PHOTO_CATEGORIES.map((category) => (
             <label
               key={category}
-              className="grid min-h-16 cursor-pointer place-items-center rounded-md border border-dashed border-white/15 bg-white/[0.04] px-2 text-center text-sm hover:border-primary/60"
+              className="grid min-h-16 cursor-pointer place-items-center rounded-md border border-dashed border-border bg-muted px-2 text-center text-sm hover:border-foreground/40"
             >
               <Camera className="mb-1 size-4 text-primary" aria-hidden="true" />
               {category}
@@ -994,7 +1007,7 @@ function JournalEditor({
 }) {
   return (
     <ModalShell title="Journal Entry" eyebrow="Private Notes" onClose={onClose}>
-      <section className="grid gap-3 rounded-md border border-white/10 bg-background/50 p-3 sm:grid-cols-2">
+      <section className="grid gap-3 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-2">
         <TextField
           label="Date"
           type="date"
@@ -1024,7 +1037,7 @@ function JournalEditor({
           placeholder="Felt much stronger today"
         />
         {draft.workoutSummary ? (
-          <div className="rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm sm:col-span-2">
+          <div className="rounded-xl border border-border bg-muted p-3 text-sm sm:col-span-2">
             <p className="font-medium">{draft.workoutSummary.name}</p>
             <p className="text-muted-foreground">{draft.workoutSummary.duration}</p>
             <p className="mt-1 text-muted-foreground">
@@ -1039,7 +1052,7 @@ function JournalEditor({
             onChange={(event) => {
               onChange({ ...draft, content: event.target.value, updatedAt: Date.now() });
             }}
-            className="min-h-72 w-full rounded-md border border-white/10 bg-white/[0.05] px-3 py-2 text-sm outline-none focus:border-primary/70"
+            className="min-h-72 w-full rounded-xl border border-border bg-muted px-3 py-2 text-sm outline-none focus:border-primary/70"
           />
         </label>
       </section>
@@ -1074,7 +1087,7 @@ function ModalShell({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 16 }}
     >
-      <div className="mx-auto max-w-4xl space-y-5 rounded-lg border border-white/10 bg-card p-4 shadow-xl shadow-black/30 sm:p-5">
+      <div className="mx-auto max-w-4xl space-y-5 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm text-primary">{eyebrow}</p>
@@ -1113,7 +1126,7 @@ function PhotoStrip({
             event.stopPropagation();
             onRevealPhoto(photo);
           }}
-          className="group relative aspect-[3/4] overflow-hidden rounded-md border border-white/10 bg-white/[0.04]"
+          className="group relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-muted"
         >
           {revealedPhotos[photo.id] ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -1148,7 +1161,7 @@ function ComparePanel({
   onRevealPhoto: (photo: ProgressPhoto) => void;
 }) {
   return (
-    <div className="rounded-md border border-white/10 bg-background/50 p-3">
+    <div className="rounded-md border border-border bg-background/50 p-3">
       <p className="text-sm font-medium text-primary">{label}</p>
       {entry ? (
         <>
@@ -1187,7 +1200,7 @@ function GalleryModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      <div className="mx-auto max-w-5xl rounded-lg border border-white/10 bg-card p-4">
+      <div className="mx-auto max-w-5xl rounded-2xl border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm text-primary">Private Gallery</p>
@@ -1219,7 +1232,7 @@ function MetricCard({
   helper: string;
 }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-card/90 p-4">
+    <div className="rounded-2xl border border-border bg-card/90 p-4">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Icon className="size-4 text-primary" aria-hidden="true" />
         {label}
@@ -1232,7 +1245,7 @@ function MetricCard({
 
 function SmallStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-white/[0.05] px-3 py-2">
+    <div className="rounded-md bg-muted px-3 py-2">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="font-medium">{value}</p>
     </div>
@@ -1259,7 +1272,7 @@ function RangePicker({
             "h-9 rounded-md px-3 text-sm font-medium transition-colors",
             range === option.value
               ? "bg-primary text-primary-foreground"
-              : "bg-white/[0.05] text-muted-foreground hover:bg-white/10"
+              : "bg-muted text-muted-foreground hover:bg-accent"
           )}
         >
           {option.label}
@@ -1294,7 +1307,7 @@ function TextField({
           onChange(event.target.value);
         }}
         placeholder={placeholder}
-        className="h-11 w-full rounded-md border border-white/10 bg-white/[0.05] px-3 text-sm outline-none focus:border-primary/70"
+        className="h-11 w-full rounded-xl border border-border bg-muted px-3 text-sm outline-none focus:border-primary/70"
       />
     </label>
   );
@@ -1314,7 +1327,7 @@ function NumberField({
   return (
     <label className="block min-w-0 space-y-2">
       <span className="text-sm font-medium text-muted-foreground">{label}</span>
-      <div className="flex h-11 items-center rounded-md border border-white/10 bg-white/[0.05] focus-within:border-primary/70">
+      <div className="flex h-11 items-center rounded-xl border border-border bg-muted focus-within:border-primary/70">
         <input
           type="number"
           inputMode="decimal"
@@ -1351,7 +1364,7 @@ function SelectField({
           onChange={(event) => {
             onChange(event.target.value);
           }}
-          className="h-11 w-full appearance-none rounded-md border border-white/10 bg-white/[0.05] px-3 pr-9 text-sm outline-none focus:border-primary/70"
+          className="h-11 w-full appearance-none rounded-xl border border-border bg-muted px-3 pr-9 text-sm outline-none focus:border-primary/70"
         >
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -1378,6 +1391,6 @@ function formatDelta(value: number) {
 
 const tooltipStyle = {
   background: "hsl(var(--card))",
-  border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 8
+  border: "1px solid hsl(var(--border))",
+  borderRadius: 12
 };
