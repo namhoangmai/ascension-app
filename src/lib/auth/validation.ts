@@ -34,6 +34,18 @@ export const signUpSchema = z
     path: ["confirmPassword"]
   });
 
+export const verifyEmailSchema = z.object({
+  email: emailSchema,
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "Enter the 6-digit code.")
+});
+
+export const resendVerificationSchema = z.object({
+  email: emailSchema
+});
+
 export const forgotPasswordSchema = z.object({
   email: emailSchema
 });
@@ -51,5 +63,7 @@ export const resetPasswordSchema = z
 
 export type SignInInput = z.infer<typeof signInSchema>;
 export type SignUpInput = z.infer<typeof signUpSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

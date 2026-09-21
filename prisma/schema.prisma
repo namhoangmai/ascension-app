@@ -165,33 +165,34 @@ enum TrainingStyle {
 }
 
 model User {
-  id                  String                          @id @default(cuid())
-  name                String?
-  email               String                          @unique
-  emailVerified       DateTime?
-  image               String?
-  passwordHash        String?
-  passwordUpdatedAt   DateTime?
-  unitSystem          UnitSystem                      @default(METRIC)
-  createdAt           DateTime                        @default(now())
-  updatedAt           DateTime                        @updatedAt
-  accounts            Account[]
-  sessions            Session[]
-  authenticators      Authenticator[]
-  passwordResetTokens PasswordResetToken[]
-  preferences         UserPreference?
-  profile             UserProfile?
-  restPreferences     ExerciseRestPreference[]
-  programs            WorkoutProgram[]
-  exercises           Exercise[]
-  workoutSessions     WorkoutSession[]
-  nutritionGoals      NutritionGoal[]
-  foods               Food[]
-  foodLogs            FoodLog[]
-  savedMeals          SavedMeal[]
-  bodyMetrics         BodyMetric[]
-  bodyPhotos          BodyPhoto[]
-  overloadSuggestions ProgressiveOverloadSuggestion[]
+  id                     String                          @id @default(cuid())
+  name                   String?
+  email                  String                          @unique
+  emailVerified          DateTime?
+  image                  String?
+  passwordHash           String?
+  passwordUpdatedAt      DateTime?
+  unitSystem             UnitSystem                      @default(METRIC)
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
+  accounts               Account[]
+  sessions               Session[]
+  authenticators         Authenticator[]
+  passwordResetTokens    PasswordResetToken[]
+  emailVerificationCodes EmailVerificationCode[]
+  preferences            UserPreference?
+  profile                UserProfile?
+  restPreferences        ExerciseRestPreference[]
+  programs               WorkoutProgram[]
+  exercises              Exercise[]
+  workoutSessions        WorkoutSession[]
+  nutritionGoals         NutritionGoal[]
+  foods                  Food[]
+  foodLogs               FoodLog[]
+  savedMeals             SavedMeal[]
+  bodyMetrics            BodyMetric[]
+  bodyPhotos             BodyPhoto[]
+  overloadSuggestions    ProgressiveOverloadSuggestion[]
 
   @@index([email])
 }
@@ -270,6 +271,22 @@ model PasswordResetToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+// 6-digit email verification codes for credential sign-up. Only an HMAC of the code is stored.
+model EmailVerificationCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  salt      String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
   @@index([expiresAt])
 }
 

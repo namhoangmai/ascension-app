@@ -2,12 +2,13 @@
 
 import {
   requestPasswordReset,
+  resendVerificationCodeFromForm,
   resetPassword,
-  signInWithFacebook,
   signInWithGoogle,
   signInWithPassword,
   signOutCurrentUser,
   signUpWithPassword,
+  verifyEmailCodeFromForm,
   type AuthActionState
 } from "./server";
 
@@ -30,12 +31,19 @@ export async function resetPasswordAction(previousState: AuthActionState, formDa
   return resetPassword(previousState, formData);
 }
 
-export async function signInWithGoogleAction() {
-  return signInWithGoogle();
+export async function verifyEmailCodeAction(previousState: AuthActionState, formData: FormData) {
+  return verifyEmailCodeFromForm(previousState, formData);
 }
 
-export async function signInWithFacebookAction() {
-  return signInWithFacebook();
+export async function resendVerificationCodeAction(
+  previousState: AuthActionState,
+  formData: FormData
+) {
+  return resendVerificationCodeFromForm(previousState, formData);
+}
+
+export async function signInWithGoogleAction() {
+  return signInWithGoogle();
 }
 
 export async function signOutCurrentUserAction() {

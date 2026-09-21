@@ -2,18 +2,24 @@ import { hash, verify } from "argon2";
 import { AuthError } from "next-auth";
 import type { Session } from "next-auth";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { randomBytes, createHash } from "node:crypto";
 
 import { prisma } from "@/lib/db/prisma";
 
+import { issueVerificationCode, codeMatches, MAX_CODE_ATTEMPTS } from "./email-verification";
+import { sendPasswordResetEmail } from "@/lib/services/email";
+
 import { auth, signIn, signOut } from "./auth";
-import { assertRateLimit, getRateLimitKey, RateLimitError } from "./rate-limit";
+import { assertRateLimit, clearRateLimit, getRateLimitKey, RateLimitError } from "./rate-limit";
 import { toSessionUser, type SessionUser } from "./session";
 import {
   forgotPasswordSchema,
+  resendVerificationSchema,
   resetPasswordSchema,
   signInSchema,
-  signUpSchema
+  signUpSchema,
+  verifyEmailSchema
 } from "./validation";
 
 export interface AuthActionState {
@@ -21,7 +27,17 @@ export interface AuthActionState {
   message?: string;
   fieldErrors?: Record<string, string[]>;
   resetUrl?: string | undefined;
+  /** When "verify-email", the UI must show the 6-digit code step for `email`. */
+  step?: "verify-email";
+  /** Normalized (lowercased) email the code step applies to. */
+  email?: string;
+  /** True only from a successful verifyEmailCode. */
+  verified?: boolean;
+  /** Seconds the UI should wait before enabling "resend". */
+  cooldownSeconds?: number;
 }
+
+const RESEND_COOLDOWN_SECONDS = 60;
 
 const genericSignInError = "Invalid email or password.";
 const genericResetMessage = "If that email exists, a reset link will be sent.";
@@ -50,6 +66,20 @@ function validationError(
     message,
     fieldErrors
   } satisfies AuthActionState;
+}
+
+function verifyStep(
+  email: string,
+  message: string,
+  status: AuthActionState["status"] = "success"
+): AuthActionState {
+  return {
+    status,
+    step: "verify-email",
+    email,
+    message,
+    cooldownSeconds: RESEND_COOLDOWN_SECONDS
+  };
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
@@ -109,6 +139,24 @@ export async function signInWithPassword(
     });
   } catch (error) {
     if (error instanceof AuthError) {
+      // Only thrown after the password was verified, so this does not enumerate accounts.
+      if ("code" in error && error.code === "email_not_verified") {
+        const user = await prisma.user.findUnique({
+          where: { email: parsed.data.email },
+          select: { id: true, email: true }
+        });
+
+        if (user) {
+          await issueVerificationCode(user);
+        }
+
+        return verifyStep(
+          parsed.data.email,
+          "Verify your email to continue. We sent a 6-digit code.",
+          "error"
+        );
+      }
+
       return {
         status: "error",
         message: genericSignInError
@@ -151,10 +199,11 @@ export async function signUpWithPassword(
   try {
     const existingUser = await prisma.user.findUnique({
       where: { email: parsed.data.email },
-      select: { id: true }
+      select: { id: true, emailVerified: true, passwordHash: true }
     });
 
-    if (existingUser) {
+    // A verified account, or one owned via OAuth (no password), is never touched.
+    if (existingUser && (existingUser.emailVerified || !existingUser.passwordHash)) {
       return {
         status: "error",
         message: "Unable to create an account with those details."
@@ -168,26 +217,38 @@ export async function signUpWithPassword(
       parallelism: 1
     });
 
-    await prisma.user.create({
-      data: {
-        name: parsed.data.name,
-        email: parsed.data.email,
-        passwordHash,
-        passwordUpdatedAt: new Date(),
-        preferences: {
-          create: {}
-        }
-      }
-    });
+    // An unverified pending sign-up for this email is replaced (name/password), so nobody can
+    // squat an address they cannot verify. Only the mailbox owner can finish with the code.
+    const user = existingUser
+      ? await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { name: parsed.data.name, passwordHash, passwordUpdatedAt: new Date() },
+          select: { id: true, email: true }
+        })
+      : await prisma.user.create({
+          data: {
+            name: parsed.data.name,
+            email: parsed.data.email,
+            emailVerified: null,
+            passwordHash,
+            passwordUpdatedAt: new Date(),
+            preferences: {
+              create: {}
+            }
+          },
+          select: { id: true, email: true }
+        });
 
-    await signIn("credentials", {
-      email: parsed.data.email,
-      password: parsed.data.password,
-      remember: parsed.data.remember ? "true" : "false",
-      redirectTo: "/profile/setup"
-    });
+    const result = await issueVerificationCode(user);
 
-    return { status: "success" };
+    if (result === "send_failed") {
+      return {
+        status: "error",
+        message: "We could not send the verification email. Please try again in a minute."
+      };
+    }
+
+    return verifyStep(user.email, "We sent a 6-digit code to your email.");
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
       if (error.code === "P2002") {
@@ -211,10 +272,6 @@ export async function signUpWithPassword(
 
 export async function signInWithGoogle() {
   await signIn("google", { redirectTo: "/profile/setup" });
-}
-
-export async function signInWithFacebook() {
-  await signIn("facebook", { redirectTo: "/dashboard" });
 }
 
 export async function signOutCurrentUser() {
@@ -247,7 +304,7 @@ export async function requestPasswordReset(
 
   const user = await prisma.user.findUnique({
     where: { email: parsed.data.email },
-    select: { id: true }
+    select: { id: true, email: true }
   });
 
   if (!user) {
@@ -275,6 +332,11 @@ export async function requestPasswordReset(
   ]);
 
   const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/reset-password?token=${token}`;
+
+  // Deferred so response time does not reveal whether the account exists.
+  after(async () => {
+    await sendPasswordResetEmail(user.email, resetUrl, 30);
+  });
 
   return {
     status: "success",
@@ -356,6 +418,11 @@ export async function resetPassword(
         passwordUpdatedAt: new Date()
       }
     });
+    // Following an emailed link proves mailbox ownership.
+    await tx.user.updateMany({
+      where: { id: resetToken.userId, emailVerified: null },
+      data: { emailVerified: new Date() }
+    });
     await tx.session.deleteMany({
       where: { userId: resetToken.userId }
     });
@@ -374,4 +441,162 @@ export async function resetPassword(
     status: "success",
     message: "Password updated. You can sign in now."
   };
+}
+
+const genericCodeError = "That code is invalid or has expired.";
+const genericResendMessage = "If that account needs verification, a new code will be sent.";
+
+export async function verifyEmailCode(email: string, code: string): Promise<AuthActionState> {
+  const parsed = verifyEmailSchema.safeParse({ email, code });
+
+  if (!parsed.success) {
+    return validationError(parsed.error.flatten().fieldErrors);
+  }
+
+  try {
+    assertRateLimit({
+      key: getRateLimitKey("verify-email", parsed.data.email),
+      limit: 10,
+      windowMs: 15 * 60 * 1000
+    });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return rateLimitedState;
+    }
+
+    throw error;
+  }
+
+  const failure = { status: "error", message: genericCodeError } satisfies AuthActionState;
+  const user = await prisma.user.findUnique({
+    where: { email: parsed.data.email },
+    select: { id: true, emailVerified: true }
+  });
+
+  if (!user || user.emailVerified) {
+    return failure;
+  }
+
+  const record = await prisma.emailVerificationCode.findFirst({
+    where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (!record) {
+    return failure;
+  }
+
+  // Count the attempt atomically before comparing, so parallel guesses cannot exceed the cap.
+  const counted = await prisma.emailVerificationCode.updateMany({
+    where: { id: record.id, usedAt: null, attempts: { lt: MAX_CODE_ATTEMPTS } },
+    data: { attempts: { increment: 1 } }
+  });
+
+  if (counted.count !== 1) {
+    return failure;
+  }
+
+  if (!codeMatches(parsed.data.code, record.salt, user.id, record.codeHash)) {
+    if (record.attempts + 1 >= MAX_CODE_ATTEMPTS) {
+      await prisma.emailVerificationCode.updateMany({
+        where: { id: record.id, usedAt: null },
+        data: { usedAt: new Date() }
+      });
+    }
+
+    return failure;
+  }
+
+  const verified = await prisma.$transaction(async (tx) => {
+    const consumed = await tx.emailVerificationCode.updateMany({
+      where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() }
+    });
+
+    if (consumed.count !== 1) {
+      return false;
+    }
+
+    await tx.user.update({ where: { id: user.id }, data: { emailVerified: new Date() } });
+    await tx.emailVerificationCode.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() }
+    });
+
+    return true;
+  });
+
+  if (!verified) {
+    return failure;
+  }
+
+  clearRateLimit(getRateLimitKey("verify-email", parsed.data.email));
+
+  return {
+    status: "success",
+    verified: true,
+    email: parsed.data.email,
+    message: "Email verified. You can sign in now."
+  };
+}
+
+export async function resendVerificationCode(email: string): Promise<AuthActionState> {
+  const parsed = resendVerificationSchema.safeParse({ email });
+
+  if (!parsed.success) {
+    return validationError(parsed.error.flatten().fieldErrors);
+  }
+
+  // Same response for every outcome (unknown, verified, cooldown, capped, rate limited).
+  const generic = {
+    status: "success",
+    step: "verify-email",
+    email: parsed.data.email,
+    message: genericResendMessage,
+    cooldownSeconds: RESEND_COOLDOWN_SECONDS
+  } satisfies AuthActionState;
+
+  try {
+    assertRateLimit({
+      key: getRateLimitKey("resend-verification", parsed.data.email),
+      limit: 10,
+      windowMs: 60 * 60 * 1000
+    });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return generic;
+    }
+
+    throw error;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email: parsed.data.email },
+    select: { id: true, email: true, emailVerified: true, passwordHash: true }
+  });
+
+  if (!user || user.emailVerified || !user.passwordHash) {
+    return generic;
+  }
+
+  // Deferred so response time does not reveal whether the account exists.
+  after(async () => {
+    await issueVerificationCode({ id: user.id, email: user.email });
+  });
+
+  return generic;
+}
+
+export async function verifyEmailCodeFromForm(
+  _previousState: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  return verifyEmailCode(formValue(formData, "email"), formValue(formData, "code"));
+}
+
+export async function resendVerificationCodeFromForm(
+  _previousState: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  return resendVerificationCode(formValue(formData, "email"));
 }

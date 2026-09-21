@@ -1,10 +1,18 @@
 import Link from "next/link";
 
 import { AuthCard } from "../_components/auth-card";
-import { FacebookButton, GoogleButton } from "../_components/oauth-button";
+import { FormMessage } from "../_components/form-message";
+import { GoogleButton } from "../_components/oauth-button";
 import { SignInForm } from "../_components/sign-in-form";
 
-export default function SignInPage() {
+interface SignInPageProps {
+  searchParams: Promise<{ verified?: string | string[] }>;
+}
+
+export default async function SignInPage({ searchParams }: SignInPageProps) {
+  const { verified } = await searchParams;
+  const showVerifiedNotice = verified === "1";
+
   return (
     <AuthCard
       eyebrow="Welcome back"
@@ -12,8 +20,10 @@ export default function SignInPage() {
       description="Pick up your training log, nutrition targets, and body progress."
     >
       <div className="space-y-4">
+        {showVerifiedNotice ? (
+          <FormMessage tone="success">Email verified, please sign in.</FormMessage>
+        ) : null}
         <GoogleButton />
-        <FacebookButton />
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="h-px flex-1 bg-border" />
           or

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useCallback, useRef, useState } from "react";
 
 import { signInWithPasswordAction } from "@/lib/auth/actions";
 import type { AuthActionState } from "@/lib/auth/server";
@@ -9,11 +9,43 @@ import type { AuthActionState } from "@/lib/auth/server";
 import { FormField } from "./form-field";
 import { FormMessage } from "./form-message";
 import { SubmitButton } from "./submit-button";
+import { VerifyEmailForm, type PendingCredentials } from "./verify-email-form";
 
 const initialState: AuthActionState = { status: "idle" };
 
 export function SignInForm() {
-  const [state, action] = useActionState(signInWithPasswordAction, initialState);
+  // Held only in memory so an unverified account can be signed in right after
+  // it verifies its email; cleared as soon as it is consumed.
+  const credentials = useRef<PendingCredentials | null>(null);
+  const [dismissedState, setDismissedState] = useState<AuthActionState | null>(null);
+  const [state, action] = useActionState(async (previous: AuthActionState, formData: FormData) => {
+    const password = formData.get("password");
+    credentials.current =
+      typeof password === "string" && password
+        ? { password, remember: formData.get("remember") === "on" }
+        : null;
+    return signInWithPasswordAction(previous, formData);
+  }, initialState);
+
+  const takeCredentials = useCallback(() => {
+    const value = credentials.current;
+    credentials.current = null;
+    return value;
+  }, []);
+
+  if (state.step === "verify-email" && state.email && state !== dismissedState) {
+    return (
+      <VerifyEmailForm
+        email={state.email}
+        cooldownSeconds={state.cooldownSeconds}
+        takeCredentials={takeCredentials}
+        onBack={() => {
+          credentials.current = null;
+          setDismissedState(state);
+        }}
+      />
+    );
+  }
 
   return (
     <form action={action} className="space-y-4">

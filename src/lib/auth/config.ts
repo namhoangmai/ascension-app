@@ -32,7 +32,49 @@ export const authConfig = {
     error: "/sign-in"
   },
   trustHost: true,
+  events: {
+    // Google only reaches here with email_verified === true (see signIn callback).
+    async signIn({ user, account }) {
+      if (account?.provider === "google" && user.id) {
+        await prisma.user.updateMany({
+          where: { id: user.id, emailVerified: null },
+          data: { emailVerified: new Date() }
+        });
+      }
+    }
+  },
   callbacks: {
+    async signIn({ account, profile }) {
+      if (account?.provider !== "google") {
+        return true;
+      }
+
+      // Refuse Google accounts whose email Google has not verified (blocks account pre-linking).
+      if (profile?.email_verified !== true || !profile.email) {
+        return false;
+      }
+
+      // Pre-hijack defense: if an UNVERIFIED credential account already exists for this email, an
+      // attacker may know its password. Drop the password and revoke sessions before linking; the
+      // real owner can set a new one via password reset.
+      const email = profile.email.toLowerCase();
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, emailVerified: true, passwordHash: true }
+      });
+
+      if (existing && !existing.emailVerified && existing.passwordHash) {
+        await prisma.$transaction([
+          prisma.user.update({
+            where: { id: existing.id },
+            data: { passwordHash: null, passwordUpdatedAt: new Date() }
+          }),
+          prisma.session.deleteMany({ where: { userId: existing.id } })
+        ]);
+      }
+
+      return true;
+    },
     jwt({ token, user }) {
       const maybeUser = user as { passwordUpdatedAt?: unknown } | undefined;
 

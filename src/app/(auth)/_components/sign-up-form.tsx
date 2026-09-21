@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 
 import { signUpWithPasswordAction } from "@/lib/auth/actions";
 import type { AuthActionState } from "@/lib/auth/server";
@@ -9,11 +9,23 @@ import { FormField } from "./form-field";
 import { FormMessage } from "./form-message";
 import { PasswordRequirements } from "./password-requirements";
 import { SubmitButton } from "./submit-button";
+import { VerifyEmailForm, type PendingCredentials } from "./verify-email-form";
 
 const initialState: AuthActionState = { status: "idle" };
 
 export function SignUpForm() {
-  const [state, action] = useActionState(signUpWithPasswordAction, initialState);
+  // Held only in memory so the user can be signed in right after verifying
+  // their email; cleared as soon as it is consumed.
+  const credentials = useRef<PendingCredentials | null>(null);
+  const [dismissedState, setDismissedState] = useState<AuthActionState | null>(null);
+  const [state, action] = useActionState(async (previous: AuthActionState, formData: FormData) => {
+    const submittedPassword = formData.get("password");
+    credentials.current =
+      typeof submittedPassword === "string" && submittedPassword
+        ? { password: submittedPassword, remember: formData.get("remember") === "on" }
+        : null;
+    return signUpWithPasswordAction(previous, formData);
+  }, initialState);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,6 +36,26 @@ export function SignUpForm() {
     // checklist in sync with that instead of showing a stale password.
     setPassword("");
   }, [state]);
+
+  const takeCredentials = useCallback(() => {
+    const value = credentials.current;
+    credentials.current = null;
+    return value;
+  }, []);
+
+  if (state.step === "verify-email" && state.email && state !== dismissedState) {
+    return (
+      <VerifyEmailForm
+        email={state.email}
+        cooldownSeconds={state.cooldownSeconds}
+        takeCredentials={takeCredentials}
+        onBack={() => {
+          credentials.current = null;
+          setDismissedState(state);
+        }}
+      />
+    );
+  }
 
   return (
     <form action={action} className="space-y-4">

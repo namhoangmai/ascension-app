@@ -93,8 +93,7 @@ Every push to GitHub triggers automation:
 Set these in the Render dashboard (names only, never commit values):
 
 - Required: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_APP_NAME`
-- Optional OAuth: `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_FACEBOOK_ID`, `AUTH_FACEBOOK_SECRET`, `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET`
-- Optional features: `FATSECRET_ACCESS_TOKEN` (food lookup), `OPENFOODFACTS_BASE_URL`
+- Optional OAuth: `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`- Optional features: `FATSECRET_ACCESS_TOKEN` (food lookup), `OPENFOODFACTS_BASE_URL`
 - Listed in `.env.example` but not read by the current code: `EMAIL_FROM`, `SMTP_*`, `OPENAI_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 
 `NEXT_PUBLIC_*` values are inlined at build time. The Dockerfile only sets placeholder `DATABASE_URL` and `AUTH_SECRET` for the build. Changing a `NEXT_PUBLIC_*` value requires a rebuild.

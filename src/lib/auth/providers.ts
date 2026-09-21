@@ -1,7 +1,7 @@
 import { verify } from "argon2";
+import { CredentialsSignin } from "next-auth";
 import type { Provider } from "next-auth/providers";
 import Credentials from "next-auth/providers/credentials";
-import Facebook from "next-auth/providers/facebook";
 import Google from "next-auth/providers/google";
 
 import { prisma } from "@/lib/db/prisma";
@@ -9,12 +9,14 @@ import { prisma } from "@/lib/db/prisma";
 import { assertRateLimit, clearRateLimit, getRateLimitKey } from "./rate-limit";
 import { signInSchema } from "./validation";
 
+/** Thrown only after the password was verified, so it does not reveal whether an account exists. */
+export class EmailNotVerifiedError extends CredentialsSignin {
+  code = "email_not_verified";
+}
+
 export function getAuthProviders() {
   const googleClientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
   const googleClientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
-  const facebookClientId = process.env.AUTH_FACEBOOK_ID ?? process.env.FACEBOOK_CLIENT_ID;
-  const facebookClientSecret =
-    process.env.AUTH_FACEBOOK_SECRET ?? process.env.FACEBOOK_CLIENT_SECRET;
   const providers: Provider[] = [
     Credentials({
       name: "Email and password",
@@ -44,6 +46,7 @@ export function getAuthProviders() {
             name: true,
             email: true,
             image: true,
+            emailVerified: true,
             passwordHash: true,
             passwordUpdatedAt: true
           }
@@ -57,6 +60,10 @@ export function getAuthProviders() {
 
         if (!isValidPassword) {
           return null;
+        }
+
+        if (!user.emailVerified) {
+          throw new EmailNotVerifiedError();
         }
 
         clearRateLimit(rateLimitKey);
@@ -77,16 +84,8 @@ export function getAuthProviders() {
       Google({
         clientId: googleClientId,
         clientSecret: googleClientSecret,
-        allowDangerousEmailAccountLinking: true
-      })
-    );
-  }
-
-  if (facebookClientId && facebookClientSecret) {
-    providers.push(
-      Facebook({
-        clientId: facebookClientId,
-        clientSecret: facebookClientSecret,
+        // Safe only because the signIn callback in config.ts rejects any Google profile whose
+        // email_verified is not true, so an unverified Google email can never link to an account.
         allowDangerousEmailAccountLinking: true
       })
     );
