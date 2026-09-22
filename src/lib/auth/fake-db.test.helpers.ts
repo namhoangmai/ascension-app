@@ -71,12 +71,13 @@ export class FakeTable {
     return include ? this.relations({ ...row }, include) : { ...row };
   }
 
-  async findFirst({ where, orderBy }: { where?: Row; orderBy?: Row }) {
+  async findFirst({ where, orderBy, select }: { where?: Row; orderBy?: Row; select?: Row }) {
     const row = this.sorted(
       this.rows.filter((r) => matches(r, where)),
       orderBy
     )[0];
-    return row ? { ...row } : null;
+    if (!row) return null;
+    return select ? this.relations({ ...row }, select) : { ...row };
   }
 
   async findMany({ where, orderBy }: { where?: Row; orderBy?: Row } = {}) {
@@ -110,6 +111,7 @@ export class FakeTable {
 
 export interface FakeDb {
   user: FakeTable;
+  userProfile: FakeTable;
   emailVerificationCode: FakeTable;
   passwordResetToken: FakeTable;
   session: FakeTable;
@@ -125,6 +127,11 @@ export function createFakeDb(): FakeDb {
     passwordUpdatedAt: null,
     image: null
   }));
+  const userProfile = new FakeTable(
+    () => ({ username: null }),
+    (row, includeOrSelect) =>
+      includeOrSelect.user ? { ...row, user: user.rows.find((u) => u.id === row.userId) } : row
+  );
   const emailVerificationCode = new FakeTable(() => ({ usedAt: null, attempts: 0 }));
   const passwordResetToken = new FakeTable(
     () => ({ usedAt: null }),
@@ -135,6 +142,7 @@ export function createFakeDb(): FakeDb {
 
   const db: FakeDb = {
     user,
+    userProfile,
     emailVerificationCode,
     passwordResetToken,
     session,
@@ -142,7 +150,7 @@ export function createFakeDb(): FakeDb {
       return typeof arg === "function" ? arg(db) : Promise.all(arg);
     },
     reset() {
-      for (const table of [user, emailVerificationCode, passwordResetToken, session]) {
+      for (const table of [user, userProfile, emailVerificationCode, passwordResetToken, session]) {
         table.rows = [];
       }
     }

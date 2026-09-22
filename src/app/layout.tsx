@@ -28,6 +28,11 @@ export const metadata: Metadata = {
   description: "Premium strength training and nutrition tracking.",
   applicationName: "Ascension",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icons/Ascension-icon.png",
+    shortcut: "/icons/Ascension-icon.png",
+    apple: "/icons/Ascension-icon.png"
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

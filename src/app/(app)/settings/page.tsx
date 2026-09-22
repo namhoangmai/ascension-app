@@ -2,8 +2,13 @@ import { Settings } from "lucide-react";
 
 import { FeatureCard } from "@/components/shared/feature-card";
 import { SectionHeading } from "@/components/shared/section-heading";
+import { getPasswordStatus } from "@/lib/auth/server";
 
-export default function SettingsPage() {
+import { ChangePasswordForm } from "./_components/change-password-form";
+
+export default async function SettingsPage() {
+  const { hasPassword } = await getPasswordStatus();
+
   return (
     <div className="space-y-6">
       <SectionHeading
@@ -11,6 +16,7 @@ export default function SettingsPage() {
         title="Settings"
         description="Account, units, rest preferences, nutrition goals, and security controls will be added after authentication."
       />
+      <ChangePasswordForm hasPassword={hasPassword} />
       <FeatureCard
         icon={Settings}
         title="Preference model"

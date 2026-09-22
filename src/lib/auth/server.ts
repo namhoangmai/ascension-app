@@ -11,9 +11,11 @@ import { issueVerificationCode, codeMatches, MAX_CODE_ATTEMPTS } from "./email-v
 import { sendPasswordResetEmail } from "@/lib/services/email";
 
 import { auth, signIn, signOut } from "./auth";
+import { findUserByIdentifier } from "./identifier";
 import { assertRateLimit, clearRateLimit, getRateLimitKey, RateLimitError } from "./rate-limit";
 import { toSessionUser, type SessionUser } from "./session";
 import {
+  changePasswordSchema,
   forgotPasswordSchema,
   resendVerificationSchema,
   resetPasswordSchema,
@@ -39,7 +41,7 @@ export interface AuthActionState {
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
-const genericSignInError = "Invalid email or password.";
+const genericSignInError = "Invalid email/username or password.";
 const genericResetMessage = "If that email exists, a reset link will be sent.";
 const genericSignUpError = "Unable to create an account right now. Try again in a moment.";
 
@@ -121,7 +123,7 @@ export async function signInWithPassword(
   formData: FormData
 ): Promise<AuthActionState> {
   const parsed = signInSchema.safeParse({
-    email: formValue(formData, "email"),
+    identifier: formValue(formData, "identifier"),
     password: formValue(formData, "password"),
     remember: formData.get("remember") === "on"
   });
@@ -132,7 +134,7 @@ export async function signInWithPassword(
 
   try {
     await signIn("credentials", {
-      email: parsed.data.email,
+      identifier: parsed.data.identifier,
       password: parsed.data.password,
       remember: parsed.data.remember ? "true" : "false",
       redirectTo: "/profile/setup"
@@ -141,17 +143,16 @@ export async function signInWithPassword(
     if (error instanceof AuthError) {
       // Only thrown after the password was verified, so this does not enumerate accounts.
       if ("code" in error && error.code === "email_not_verified") {
-        const user = await prisma.user.findUnique({
-          where: { email: parsed.data.email },
-          select: { id: true, email: true }
-        });
+        // A user who isn't verified can't have finished /profile/setup, so in practice this
+        // resolves by email only — but resolve generically rather than assuming.
+        const user = await findUserByIdentifier(parsed.data.identifier);
 
         if (user) {
           await issueVerificationCode(user);
         }
 
         return verifyStep(
-          parsed.data.email,
+          user?.email ?? parsed.data.identifier,
           "Verify your email to continue. We sent a 6-digit code.",
           "error"
         );
@@ -441,6 +442,100 @@ export async function resetPassword(
     status: "success",
     message: "Password updated. You can sign in now."
   };
+}
+
+export async function changePassword(
+  _previousState: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  const user = await requireUser();
+
+  try {
+    assertRateLimit({
+      key: getRateLimitKey("change-password", user.id),
+      limit: 5,
+      windowMs: 15 * 60 * 1000
+    });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return rateLimitedState;
+    }
+
+    throw error;
+  }
+
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formValue(formData, "currentPassword") || undefined,
+    newPassword: formValue(formData, "newPassword"),
+    confirmNewPassword: formValue(formData, "confirmNewPassword")
+  });
+
+  if (!parsed.success) {
+    return validationError(parsed.error.flatten().fieldErrors);
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { passwordHash: true }
+  });
+
+  if (dbUser?.passwordHash) {
+    if (!parsed.data.currentPassword) {
+      return validationError(
+        { currentPassword: ["Enter your current password."] },
+        "Check the form and try again."
+      );
+    }
+
+    const isCurrentPasswordValid = await verify(dbUser.passwordHash, parsed.data.currentPassword);
+
+    if (!isCurrentPasswordValid) {
+      return validationError(
+        { currentPassword: ["Current password is incorrect."] },
+        "Check the form and try again."
+      );
+    }
+
+    const samePassword = await verify(dbUser.passwordHash, parsed.data.newPassword);
+
+    if (samePassword) {
+      return {
+        status: "error",
+        message: "Choose a password you have not used recently."
+      };
+    }
+  }
+
+  const passwordHash = await hash(parsed.data.newPassword, {
+    type: 2,
+    memoryCost: 19456,
+    timeCost: 2,
+    parallelism: 1
+  });
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, passwordUpdatedAt: new Date() }
+  });
+  await prisma.session.deleteMany({ where: { userId: user.id } });
+
+  return {
+    status: "success",
+    message: dbUser?.passwordHash
+      ? "Password updated."
+      : "Password set. You can now sign in with your username or email and this password."
+  };
+}
+
+export async function getPasswordStatus(): Promise<{ hasPassword: boolean }> {
+  const user = await requireUser();
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { passwordHash: true }
+  });
+
+  return { hasPassword: Boolean(dbUser?.passwordHash) };
 }
 
 const genericCodeError = "That code is invalid or has expired.";

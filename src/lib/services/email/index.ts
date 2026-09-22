@@ -99,3 +99,16 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string, ttlMi
 
   return deliver({ to, subject, html, text, devLog: `reset link: ${resetUrl}` });
 }
+
+export async function sendWelcomeEmail(to: string, name?: string | null) {
+  const subject = "Welcome to Ascension";
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const text = `${greeting}\n\nWelcome to Ascension. Your account is ready.\n\nSign in any time with your email, username, or Google.`;
+  const html = layout(
+    "Welcome to Ascension",
+    `<p style="font-size:15px;line-height:1.5;margin:0 0 16px;">${escapeHtml(greeting)}</p>
+<p style="font-size:15px;line-height:1.5;margin:0 0 16px;">Your account is ready. Sign in any time with your email, username, or Google.</p>`
+  );
+
+  return deliver({ to, subject, html, text, devLog: `welcome email sent to ${to}` });
+}

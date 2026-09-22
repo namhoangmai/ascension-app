@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prisma } from "@/lib/db/prisma";
 
+import { sendWelcomeEmail } from "@/lib/services/email";
+
 import { authConfig } from "./config";
 import type { FakeDb } from "./fake-db.test.helpers";
 import { getAuthProviders } from "./providers";
@@ -11,8 +13,10 @@ vi.mock("@/lib/db/prisma", async () => {
   const { createFakeDb } = await import("./fake-db.test.helpers");
   return { prisma: createFakeDb() };
 });
+vi.mock("@/lib/services/email", () => ({ sendWelcomeEmail: vi.fn() }));
 
 const db = prisma as unknown as FakeDb;
+const sendWelcomeEmailMock = vi.mocked(sendWelcomeEmail);
 
 interface GoogleProfile {
   email?: string;
@@ -23,7 +27,7 @@ type SignInCallback = (params: {
   profile?: GoogleProfile;
 }) => Promise<boolean>;
 type SignInEvent = (message: {
-  user: { id?: string };
+  user: { id?: string; email?: string | null; name?: string | null };
   account?: { provider: string } | null;
 }) => Promise<void>;
 
@@ -33,6 +37,7 @@ const google = { provider: "google" };
 
 beforeEach(() => {
   db.reset();
+  sendWelcomeEmailMock.mockReset();
 });
 
 describe("providers", () => {
@@ -252,6 +257,43 @@ describe("signIn event", () => {
     await signInEvent({ user: {}, account: google });
 
     expect(db.user.rows[0]?.emailVerified).toBeNull();
+  });
+
+  it("sends the welcome email once on a first-time Google sign-in", async () => {
+    const user = await db.user.create({ data: { email: "g@example.com", name: "Gigi" } });
+
+    await signInEvent({
+      user: { id: user.id, email: "g@example.com", name: "Gigi" },
+      account: google
+    });
+
+    expect(sendWelcomeEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendWelcomeEmailMock).toHaveBeenCalledWith("g@example.com", "Gigi");
+  });
+
+  it("does not send the welcome email on a repeat Google sign-in (already verified)", async () => {
+    const original = new Date("2025-05-05T00:00:00Z");
+    const user = await db.user.create({
+      data: { email: "g@example.com", name: "Gigi", emailVerified: original }
+    });
+
+    await signInEvent({
+      user: { id: user.id, email: "g@example.com", name: "Gigi" },
+      account: google
+    });
+
+    expect(sendWelcomeEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("does not send the welcome email for credentials sign-ins", async () => {
+    const user = await db.user.create({ data: { email: "g@example.com", name: "Gigi" } });
+
+    await signInEvent({
+      user: { id: user.id, email: "g@example.com", name: "Gigi" },
+      account: { provider: "credentials" }
+    });
+
+    expect(sendWelcomeEmailMock).not.toHaveBeenCalled();
   });
 });
 

@@ -15,6 +15,7 @@ import {
   idle,
   lastCode,
   seedUser,
+  seedUserProfile,
   sendCode,
   signInMock,
   uniqueEmail,
@@ -62,10 +63,13 @@ beforeEach(() => {
   }) as unknown as typeof signIn);
 });
 
-const signInAs = (email: string, password: string, extra: Record<string, string | boolean> = {}) =>
-  signInWithPassword(idle, form({ email, password, ...extra }));
+const signInAs = (
+  identifier: string,
+  password: string,
+  extra: Record<string, string | boolean> = {}
+) => signInWithPassword(idle, form({ identifier, password, ...extra }));
 
-const GENERIC_SIGN_IN = { status: "error", message: "Invalid email or password." };
+const GENERIC_SIGN_IN = { status: "error", message: "Invalid email/username or password." };
 
 async function seedPasswordUser(verified: boolean, password = GOOD_PASSWORD) {
   const email = uniqueEmail();
@@ -78,6 +82,17 @@ async function seedPasswordUser(verified: boolean, password = GOOD_PASSWORD) {
   return { email, user };
 }
 
+/** Same as `seedPasswordUser`, but also links a `UserProfile.username` to the account. */
+async function seedPasswordUserWithUsername(
+  username: string,
+  verified = true,
+  password = GOOD_PASSWORD
+) {
+  const { email, user } = await seedPasswordUser(verified, password);
+  await seedUserProfile(user.id as string, { username });
+  return { email, username, user };
+}
+
 describe("sign-in with password", () => {
   it("correct password + verified email authenticates (redirects to /profile/setup)", async () => {
     const { email, user } = await seedPasswordUser(true);
@@ -85,7 +100,7 @@ describe("sign-in with password", () => {
     await expect(signInAs(email, GOOD_PASSWORD)).rejects.toThrow("NEXT_REDIRECT");
 
     expect(signInMock).toHaveBeenCalledWith("credentials", {
-      email,
+      identifier: email,
       password: GOOD_PASSWORD,
       remember: "false",
       redirectTo: "/profile/setup"
@@ -216,21 +231,22 @@ describe("sign-in with password", () => {
   });
 
   it("rejects empty fields with field errors and never calls the auth layer", async () => {
-    const noEmail = await signInAs("", GOOD_PASSWORD);
+    const noIdentifier = await signInAs("", GOOD_PASSWORD);
     const noPassword = await signInAs("a@example.com", "");
     const neither = await signInWithPassword(idle, new FormData());
 
-    expect(noEmail.fieldErrors?.email).toBeDefined();
+    expect(noIdentifier.fieldErrors?.identifier).toBeDefined();
     expect(noPassword.fieldErrors?.password).toEqual(["Enter your password."]);
-    expect(neither.fieldErrors?.email).toBeDefined();
+    expect(neither.fieldErrors?.identifier).toBeDefined();
     expect(neither.fieldErrors?.password).toBeDefined();
     expect(signInMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a malformed email before hitting the auth layer", async () => {
+  it("an unrecognized identifier gives the generic error, not a field error", async () => {
     const result = await signInAs("not-an-email", GOOD_PASSWORD);
-    expect(result.fieldErrors?.email).toEqual(["Enter a valid email address."]);
-    expect(signInMock).not.toHaveBeenCalled();
+    expect(result).toEqual(GENERIC_SIGN_IN);
+    expect(result.fieldErrors).toBeUndefined();
+    expect(signInMock).toHaveBeenCalled();
   });
 
   it("does not enforce the password policy on sign-in (legacy/short passwords may log in)", async () => {
@@ -242,5 +258,37 @@ describe("sign-in with password", () => {
     signInMock.mockReset();
     signInMock.mockRejectedValueOnce(new Error("NEXT_REDIRECT"));
     await expect(signInAs("a@example.com", "x")).rejects.toThrow("NEXT_REDIRECT");
+  });
+});
+
+describe("sign-in with username", () => {
+  it("signs in via username with the correct password, same as email", async () => {
+    const { username } = await seedPasswordUserWithUsername("alice_92");
+
+    await expect(signInAs(username, GOOD_PASSWORD)).rejects.toThrow("NEXT_REDIRECT");
+
+    expect(signInMock).toHaveBeenCalledWith("credentials", {
+      identifier: username,
+      password: GOOD_PASSWORD,
+      remember: "false",
+      redirectTo: "/profile/setup"
+    });
+  });
+
+  it("username lookup is an exact match, not case-insensitive", async () => {
+    const { username } = await seedPasswordUserWithUsername("CaseSensitive1");
+
+    expect(await signInAs(username.toUpperCase(), GOOD_PASSWORD)).toEqual(GENERIC_SIGN_IN);
+    await expect(signInAs(username, GOOD_PASSWORD)).rejects.toThrow("NEXT_REDIRECT");
+  });
+
+  it("unknown username gives the same generic error as unknown email or wrong password", async () => {
+    expect(await signInAs("no-such-user-xyz", GOOD_PASSWORD)).toEqual(GENERIC_SIGN_IN);
+  });
+
+  it("an identifier containing @ is always treated as an email lookup, even if it matches a username", async () => {
+    await seedPasswordUserWithUsername("weird@name");
+
+    expect(await signInAs("weird@name", GOOD_PASSWORD)).toEqual(GENERIC_SIGN_IN);
   });
 });

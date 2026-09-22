@@ -2,6 +2,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { NextAuthConfig } from "next-auth";
 
 import { prisma } from "@/lib/db/prisma";
+import { sendWelcomeEmail } from "@/lib/services/email";
 
 import { getAuthProviders } from "./providers";
 
@@ -36,10 +37,16 @@ export const authConfig = {
     // Google only reaches here with email_verified === true (see signIn callback).
     async signIn({ user, account }) {
       if (account?.provider === "google" && user.id) {
-        await prisma.user.updateMany({
+        const result = await prisma.user.updateMany({
           where: { id: user.id, emailVerified: null },
           data: { emailVerified: new Date() }
         });
+
+        // Only true on the first Google sign-up (transition from emailVerified: null), never on
+        // repeat Google logins.
+        if (result.count === 1) {
+          await sendWelcomeEmail(user.email ?? "", user.name);
+        }
       }
     }
   },

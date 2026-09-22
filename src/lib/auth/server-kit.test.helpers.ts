@@ -57,6 +57,11 @@ export async function seedUser(fields: Row = {}) {
   return db.user.create({ data: { name: "Seed", email, ...fields } });
 }
 
+/** Links a `UserProfile` row (holding `username`) to an already-seeded user. */
+export async function seedUserProfile(userId: string, fields: Row = {}) {
+  return db.userProfile.create({ data: { userId, ...fields } });
+}
+
 export const advance = (ms: number) => {
   vi.setSystemTime(new Date(Date.now() + ms));
 };

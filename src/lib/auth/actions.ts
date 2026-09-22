@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  changePassword,
   requestPasswordReset,
   resendVerificationCodeFromForm,
   resetPassword,
@@ -40,6 +41,10 @@ export async function resendVerificationCodeAction(
   formData: FormData
 ) {
   return resendVerificationCodeFromForm(previousState, formData);
+}
+
+export async function changePasswordAction(previousState: AuthActionState, formData: FormData) {
+  return changePassword(previousState, formData);
 }
 
 export async function signInWithGoogleAction() {

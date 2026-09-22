@@ -50,11 +50,11 @@ export function SignInForm() {
   return (
     <form action={action} className="space-y-4">
       <FormField
-        label="Email"
-        name="email"
-        type="email"
-        autoComplete="email"
-        error={state.fieldErrors?.email}
+        label="Email or username"
+        name="identifier"
+        type="text"
+        autoComplete="username"
+        error={state.fieldErrors?.identifier}
         required
       />
       <FormField

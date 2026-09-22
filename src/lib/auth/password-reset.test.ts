@@ -205,7 +205,9 @@ describe("reset password", () => {
       options: { authorize: (c: Record<string, unknown>) => Promise<unknown> };
     };
 
-    expect(await provider.options.authorize({ email, password: NEW_PASSWORD })).toMatchObject({
+    expect(
+      await provider.options.authorize({ identifier: email, password: NEW_PASSWORD })
+    ).toMatchObject({
       email
     });
   });

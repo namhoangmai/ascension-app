@@ -16,7 +16,7 @@ export const passwordPolicySchema = z
   .regex(/[0-9]/, "Add a number.");
 
 export const signInSchema = z.object({
-  email: emailSchema,
+  identifier: z.string().trim().min(1, "Enter your email or username.").max(254),
   password: z.string().min(1, "Enter your password."),
   remember: z.boolean().default(true)
 });
@@ -61,9 +61,21 @@ export const resetPasswordSchema = z
     path: ["confirmPassword"]
   });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().optional(),
+    newPassword: passwordPolicySchema,
+    confirmNewPassword: z.string()
+  })
+  .refine((data) => data.newPassword === data.confirmNewPassword, {
+    message: "Passwords do not match.",
+    path: ["confirmNewPassword"]
+  });
+
 export type SignInInput = z.infer<typeof signInSchema>;
 export type SignUpInput = z.infer<typeof signUpSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
