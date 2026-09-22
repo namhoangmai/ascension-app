@@ -4,6 +4,8 @@ import Link from "next/link";
 import {
   CalendarDays,
   Check,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Copy,
   Dumbbell,
@@ -883,6 +885,9 @@ function WorkoutEditor({
   onResumeConflict: (workoutId: string) => void;
 }) {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [expandedExerciseIds, setExpandedExerciseIds] = useState<Set<string>>(
+    () => new Set(draft.exercises.map((exercise) => exercise.id))
+  );
   const busy = isSaving || isCancelling;
 
   function updateExercise(exerciseId: string, nextExercise: StrengthExerciseEntry) {
@@ -893,6 +898,29 @@ function WorkoutEditor({
       ),
       updatedAt: Date.now()
     });
+  }
+
+  function toggleExerciseExpanded(exerciseId: string) {
+    setExpandedExerciseIds((current) => {
+      const next = new Set(current);
+      if (next.has(exerciseId)) {
+        next.delete(exerciseId);
+      } else {
+        next.add(exerciseId);
+      }
+      return next;
+    });
+  }
+
+  function addExercise() {
+    const nextExercise = createExerciseEntry();
+    onChange({
+      ...draft,
+      exercises: [...draft.exercises, nextExercise],
+      updatedAt: Date.now()
+    });
+    // Collapse every existing exercise and expand only the new one.
+    setExpandedExerciseIds(new Set([nextExercise.id]));
   }
 
   return (
@@ -966,6 +994,10 @@ function WorkoutEditor({
               index={exerciseIndex}
               workouts={workouts}
               currentWorkoutId={draft.id}
+              expanded={expandedExerciseIds.has(exercise.id)}
+              onToggleExpanded={() => {
+                toggleExerciseExpanded(exercise.id);
+              }}
               onChange={(nextExercise) => {
                 updateExercise(exercise.id, nextExercise);
               }}
@@ -975,22 +1007,18 @@ function WorkoutEditor({
                   exercises: draft.exercises.filter((item) => item.id !== exercise.id),
                   updatedAt: Date.now()
                 });
+                setExpandedExerciseIds((current) => {
+                  const next = new Set(current);
+                  next.delete(exercise.id);
+                  return next;
+                });
               }}
             />
           ))}
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <Button
-            variant="outline"
-            onClick={() => {
-              onChange({
-                ...draft,
-                exercises: [...draft.exercises, createExerciseEntry()],
-                updatedAt: Date.now()
-              });
-            }}
-          >
+          <Button variant="outline" onClick={addExercise}>
             <Plus className="size-4" aria-hidden="true" />
             Add Exercise
           </Button>
@@ -1085,6 +1113,8 @@ function ExerciseEditor({
   index,
   workouts,
   currentWorkoutId,
+  expanded,
+  onToggleExpanded,
   onChange,
   onRemove
 }: {
@@ -1092,6 +1122,8 @@ function ExerciseEditor({
   index: number;
   workouts: StrengthWorkout[];
   currentWorkoutId: string;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onChange: (exercise: StrengthExerciseEntry) => void;
   onRemove: () => void;
 }) {
@@ -1109,119 +1141,193 @@ function ExerciseEditor({
   return (
     <motion.section layout className="rounded-2xl border border-border bg-background/50 p-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <TextField
-            label={`Exercise ${String(index + 1)}`}
-            value={exercise.name}
-            onChange={(name) => {
-              onChange({ ...exercise, name });
-            }}
-            placeholder="Exercise"
-          />
-          <TextField
-            label="Notes"
-            value={exercise.notes ?? ""}
-            onChange={(notes) => {
-              onChange({ ...exercise, notes });
-            }}
-            placeholder="Notes"
-          />
-        </div>
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          aria-label={expanded ? "Collapse exercise" : "Expand exercise"}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+            {expanded ? (
+              <ChevronUp className="size-4" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="size-4" aria-hidden="true" />
+            )}
+          </span>
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {exercise.name.trim() || `Exercise ${String(index + 1)}`}
+          </span>
+        </button>
         <Button variant="ghost" size="icon" onClick={onRemove} aria-label="Remove exercise">
           <Trash2 className="size-4" aria-hidden="true" />
         </Button>
       </div>
 
-      {previousSession ? <PreviousSessionComparison previousSession={previousSession} /> : null}
+      <AnimatePresence initial={false} mode="wait">
+        {expanded ? (
+          <motion.div
+            key="expanded"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <TextField
+                label={`Exercise ${String(index + 1)}`}
+                value={exercise.name}
+                onChange={(name) => {
+                  onChange({ ...exercise, name });
+                }}
+                placeholder="Exercise"
+              />
+              <TextField
+                label="Notes"
+                value={exercise.notes ?? ""}
+                onChange={(notes) => {
+                  onChange({ ...exercise, notes });
+                }}
+                placeholder="Notes"
+              />
+            </div>
 
-      <div className="mt-4 space-y-2">
-        <AnimatePresence initial={false}>
-          {exercise.sets.map((set, setIndex) => (
-            <motion.div
-              key={set.id}
-              layout
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="grid grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_44px] gap-2 sm:grid-cols-[52px_repeat(4,minmax(0,1fr))_44px]"
-            >
-              <div className="grid h-11 place-items-center rounded-md bg-muted text-sm text-muted-foreground">
-                {setIndex + 1}
-              </div>
-              <NumberField
-                label="Weight"
-                value={set.weight}
-                onChange={(weight) => {
-                  updateSet(set.id, { ...set, weight });
-                }}
-              />
-              <NumberField
-                label="Reps"
-                value={set.reps}
-                onChange={(reps) => {
-                  updateSet(set.id, { ...set, reps });
-                }}
-              />
-              <NumberField
-                className="hidden sm:block"
-                label="RIR"
-                value={set.rir ?? null}
-                onChange={(rir) => {
-                  updateSet(set.id, { ...set, rir });
-                }}
-              />
-              <NumberField
-                className="hidden sm:block"
-                label="Rest"
-                value={set.restSeconds ?? null}
-                onChange={(restSeconds) => {
-                  updateSet(set.id, { ...set, restSeconds });
-                }}
-              />
-              <button
-                type="button"
+            {previousSession ? (
+              <PreviousSessionComparison previousSession={previousSession} />
+            ) : null}
+
+            <div className="mt-4 space-y-2">
+              <AnimatePresence initial={false}>
+                {exercise.sets.map((set, setIndex) => (
+                  <motion.div
+                    key={set.id}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="grid grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_40px] gap-1.5 sm:grid-cols-[52px_repeat(4,minmax(0,1fr))_44px] sm:gap-2"
+                  >
+                    <div className="grid h-11 place-items-center rounded-md bg-muted text-sm text-muted-foreground">
+                      {setIndex + 1}
+                    </div>
+                    <NumberField
+                      label="Weight"
+                      value={set.weight}
+                      decimals={1}
+                      onChange={(weight) => {
+                        updateSet(set.id, { ...set, weight });
+                      }}
+                    />
+                    <NumberField
+                      label="Reps"
+                      value={set.reps}
+                      onChange={(reps) => {
+                        updateSet(set.id, { ...set, reps });
+                      }}
+                    />
+                    <NumberField
+                      label="RIR"
+                      value={set.rir ?? null}
+                      onChange={(rir) => {
+                        updateSet(set.id, { ...set, rir });
+                      }}
+                    />
+                    <NumberField
+                      className="hidden sm:block"
+                      label="Rest"
+                      value={set.restSeconds ?? null}
+                      onChange={(restSeconds) => {
+                        updateSet(set.id, { ...set, restSeconds });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateSet(set.id, { ...set, completed: !set.completed });
+                      }}
+                      className={cn(
+                        "grid h-11 place-items-center rounded-md border transition-colors",
+                        set.completed
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-muted text-muted-foreground"
+                      )}
+                      aria-label="Toggle set completed"
+                    >
+                      <Check className="size-4" aria-hidden="true" />
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
-                  updateSet(set.id, { ...set, completed: !set.completed });
+                  onChange({ ...exercise, sets: [...exercise.sets, createEmptySet()] });
                 }}
-                className={cn(
-                  "grid h-11 place-items-center rounded-md border transition-colors",
-                  set.completed
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-muted text-muted-foreground"
-                )}
-                aria-label="Toggle set completed"
               >
-                <Check className="size-4" aria-hidden="true" />
-              </button>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-
-      <div className="mt-3 flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            onChange({ ...exercise, sets: [...exercise.sets, createEmptySet()] });
-          }}
-        >
-          <Plus className="size-4" aria-hidden="true" />
-          Add Set
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            onChange({ ...exercise, sets: exercise.sets.slice(0, -1) });
-          }}
-          disabled={exercise.sets.length <= 1}
-        >
-          Remove Set
-        </Button>
-      </div>
+                <Plus className="size-4" aria-hidden="true" />
+                Add Set
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onChange({ ...exercise, sets: exercise.sets.slice(0, -1) });
+                }}
+                disabled={exercise.sets.length <= 1}
+              >
+                Remove Set
+              </Button>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="collapsed"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            {exercise.sets.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                {exercise.sets.map((set, setIndex) => (
+                  <span key={set.id} className="rounded-md bg-muted px-2 py-1">
+                    {formatCollapsedSet(set, setIndex)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.section>
   );
+}
+
+function formatCollapsedSetNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatCollapsedSet(set: StrengthSet, setIndex: number) {
+  const parts: string[] = [];
+
+  if (set.weight !== null && set.reps !== null) {
+    parts.push(`${formatCollapsedSetNumber(set.weight)}kg×${String(set.reps)}`);
+  } else if (set.weight !== null) {
+    parts.push(`${formatCollapsedSetNumber(set.weight)}kg`);
+  } else if (set.reps !== null) {
+    parts.push(`×${String(set.reps)}`);
+  }
+
+  if (set.rir !== null && set.rir !== undefined) {
+    parts.push(`rir${String(set.rir)}`);
+  }
+
+  const summary = parts.join(" ");
+
+  return summary ? `${String(setIndex + 1)}: ${summary}` : String(setIndex + 1);
 }
 
 function PreviousSessionComparison({ previousSession }: { previousSession: ExerciseHistoryEntry }) {
@@ -1537,12 +1643,14 @@ function NumberField({
   label,
   value,
   onChange,
-  className
+  className,
+  decimals = 0
 }: {
   label: string;
   value: number | null;
   onChange: (value: number | null) => void;
   className?: string;
+  decimals?: number;
 }) {
   return (
     <label className={cn("block min-w-0", className)}>
@@ -1550,10 +1658,19 @@ function NumberField({
       <input
         type="number"
         inputMode="decimal"
-        step="0.5"
+        step={decimals > 0 ? "0.1" : "0.5"}
         value={value ?? ""}
         onChange={(event) => {
-          onChange(event.target.value === "" ? null : Number(event.target.value));
+          if (event.target.value === "") {
+            onChange(null);
+            return;
+          }
+
+          const parsed = Number(event.target.value);
+          const factor = 10 ** decimals;
+          const rounded = decimals > 0 ? Math.round(parsed * factor) / factor : parsed;
+
+          onChange(rounded);
         }}
         placeholder={label}
         className="h-11 w-full rounded-md border border-border bg-muted px-2 text-center text-sm outline-none focus:border-foreground"

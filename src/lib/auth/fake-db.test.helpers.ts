@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-plus-operands, @typescript-eslint/no-unsafe-call, @typescript-eslint/require-await */
 
 /**
  * Minimal in-memory stand-in for the Prisma client, covering only the query shapes the auth code
@@ -52,7 +52,8 @@ export class FakeTable {
   }
 
   async create({ data }: { data: Row }) {
-    const { preferences: _nested, ...rest } = data;
+    const rest = { ...data };
+    delete rest.preferences; // nested relation writes are not modelled
     const row: Row = {
       id: `id_${String(++seq)}`,
       createdAt: new Date(),
@@ -107,7 +108,16 @@ export class FakeTable {
   }
 }
 
-export function createFakeDb() {
+export interface FakeDb {
+  user: FakeTable;
+  emailVerificationCode: FakeTable;
+  passwordResetToken: FakeTable;
+  session: FakeTable;
+  $transaction: (arg: ((tx: FakeDb) => Promise<unknown>) | Promise<unknown>[]) => Promise<unknown>;
+  reset: () => void;
+}
+
+export function createFakeDb(): FakeDb {
   const user = new FakeTable(() => ({
     name: null,
     emailVerified: null,
@@ -118,16 +128,17 @@ export function createFakeDb() {
   const emailVerificationCode = new FakeTable(() => ({ usedAt: null, attempts: 0 }));
   const passwordResetToken = new FakeTable(
     () => ({ usedAt: null }),
-    (row, include) => (include.user ? { ...row, user: user.rows.find((u) => u.id === row.userId) } : row)
+    (row, include) =>
+      include.user ? { ...row, user: user.rows.find((u) => u.id === row.userId) } : row
   );
   const session = new FakeTable(() => ({}));
 
-  const db = {
+  const db: FakeDb = {
     user,
     emailVerificationCode,
     passwordResetToken,
     session,
-    async $transaction(arg: ((tx: typeof db) => Promise<unknown>) | Promise<unknown>[]) {
+    async $transaction(arg) {
       return typeof arg === "function" ? arg(db) : Promise.all(arg);
     },
     reset() {
@@ -139,5 +150,3 @@ export function createFakeDb() {
 
   return db;
 }
-
-export type FakeDb = ReturnType<typeof createFakeDb>;

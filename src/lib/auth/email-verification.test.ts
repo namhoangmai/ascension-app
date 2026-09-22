@@ -1,4 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */
 import * as nodeCrypto from "node:crypto";
+import type * as NodeCrypto from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prisma } from "@/lib/db/prisma";
@@ -22,7 +24,7 @@ vi.mock("@/lib/services/email", () => ({
   sendPasswordResetEmail: vi.fn()
 }));
 vi.mock("node:crypto", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:crypto")>();
+  const actual = await importOriginal<typeof NodeCrypto>();
   return { ...actual, timingSafeEqual: vi.fn(actual.timingSafeEqual) };
 });
 
