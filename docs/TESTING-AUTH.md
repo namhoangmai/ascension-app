@@ -89,5 +89,5 @@ Repeat these on every listed surface: sign-up, code step, sign-in, forgot/reset 
 - Real Resend delivery, spam placement, SPF/DKIM/DMARC.
 - Wall-clock behavior over minutes/hours (unit tests fake the clock).
 - Rendering, responsiveness, themes, accessibility, password-manager/autofill behavior (no jsdom/Playwright yet).
-- Multi-instance behavior of the in-memory rate limiter (only valid for a single server process).
+- Multi-instance behavior of the in-memory rate limiter (only valid for a single server process). This matters more than it used to: the app is deployed on Vercel, whose serverless functions run as multiple, independently-scaled instances with no shared memory, so the in-memory counters do not actually enforce a global limit in production — an attacker can get a fresh limiter per instance. Treat any rate-limiting numbers in this doc as best-effort/local-only until that gap is closed (e.g. with a shared store such as Redis/Upstash).
 - The real Auth.js `signIn()` internals (unit tests replace `signIn` with a shim that calls the real credentials `authorize` and mimics Auth.js error mapping).

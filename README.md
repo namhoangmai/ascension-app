@@ -12,7 +12,7 @@ Ascension is a fitness-tracking web app built with Next.js 15 (App Router, React
 - PostgreSQL 16 with Prisma 7
 - Auth.js v5 (beta) with JWT sessions and Argon2id password hashing
 - Zod validation, Recharts, Motion
-- Docker (multi-stage, `output: "standalone"`), GitHub Actions, Render
+- Docker (multi-stage, `output: "standalone"`, for local dev only — see Deploy), GitHub Actions, Vercel
 
 ## Features
 
@@ -51,7 +51,9 @@ Check the database with `docker compose ps` and `docker compose logs -f db`.
 docker compose up --build
 ```
 
-The Dockerfile makes the app listen on `PORT=10000` (the port Render uses). Compose maps host `3000` to container `10000`, so open http://localhost:3000. Inside the compose network the app talks to Postgres at `db:5432`. The compose file contains local-only development credentials and secret.
+The Dockerfile makes the app listen on `PORT=10000`. This is only used for local prod-like testing via Docker Compose — the deployed app on Vercel does not use the Dockerfile at all (see Deploy). Compose maps host `3000` to container `10000`, so open http://localhost:3000. Inside the compose network the app talks to Postgres at `db:5432`. The compose file contains local-only development credentials and secret.
+
+The Dockerfile's builder stage also accepts a `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` build arg (see "Environment variables" below). `docker-compose.yml` doesn't pass one, so a plain Compose rebuild mints a fresh key each time — harmless for one-off local testing, but pass `--build-arg NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=$(openssl rand -base64 32)` (kept stable across builds) if you're using Compose to reproduce the "stale Server Action after redeploy" bug described there.
 
 You need to apply migrations to the compose database yourself. The runtime image does not include the Prisma CLI. From the host, run `npm run db:deploy` with `DATABASE_URL` pointing at `localhost:5433` (the default in `.env`).
 
@@ -77,55 +79,59 @@ There is no automated test suite in this repo.
 
 ## Deploy
 
-Every push to GitHub triggers automation:
+The app is deployed on **Vercel**, not on the `Dockerfile`/Docker Compose setup described above. Every push to GitHub triggers automation:
 
 1. **CI** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`. It starts a Postgres service, then runs `npm ci`, `db:generate`, typecheck, lint, format check and `npm run build`. It does not apply migrations.
-2. **Render** builds the repository `Dockerfile` and deploys when `main` is pushed (auto-deploy on the Render service). No `render.yaml` exists in this repo, so the service is configured in the Render dashboard. Check that setting there.
-
-### Container
-
-- Dockerfile: multi-stage `node:22-alpine`, runs `node server.js` as a non-root user.
-- Port: `10000` (`EXPOSE 10000`, `ENV PORT=10000`). Set the Render service to the same port.
-- Health check path: `/api/health`. It returns `{"status":"ok"}` and deliberately does not query the database. A DB check previously caused a Render restart loop.
+2. **Vercel** builds and deploys directly from the repository via its GitHub integration — pushing to `main` auto-deploys to production. Vercel runs its own build (`next build`) and serves the app as serverless/edge functions; it does **not** use the repository's `Dockerfile`, `docker-compose.yml`, or `output: "standalone"` for the deployed app. There is no server port to configure — Vercel handles that itself. The Dockerfile/Compose setup is for local development only (see "Run the full stack with Docker Compose" above).
 
 ### Environment variables
 
-Set these in the Render dashboard (names only, never commit values):
+Set these in the Vercel project dashboard (Settings → Environment Variables; names only, never commit values):
 
-- Required: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_APP_NAME`
+- Required: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_APP_NAME`, `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (build-time — see below)
 - Optional OAuth: `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`- Optional features: `FATSECRET_ACCESS_TOKEN` (food lookup), `OPENFOODFACTS_BASE_URL`
 - Listed in `.env.example` but not read by the current code: `EMAIL_FROM`, `SMTP_*`, `OPENAI_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 
-`NEXT_PUBLIC_*` values are inlined at build time. The Dockerfile only sets placeholder `DATABASE_URL` and `AUTH_SECRET` for the build. Changing a `NEXT_PUBLIC_*` value requires a rebuild.
+`NEXT_PUBLIC_*` values are inlined at build time. Changing a `NEXT_PUBLIC_*` value requires a rebuild (redeploy) on Vercel. The Dockerfile only sets placeholder `DATABASE_URL` and `AUTH_SECRET` for its own (local) build and is unrelated to the Vercel build's environment variables.
 
-### Keep-alive
+#### `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`
 
-`.github/workflows/keep-alive.yml` pings the health endpoint every 3 days (and on manual dispatch) to keep a free-tier instance warm. It requires the GitHub repository variable `APP_HEALTH_URL` (Settings, Secrets and variables, Actions, Variables), for example `https://<your-service>.onrender.com/api/health`. Without it the job fails.
+Next.js encrypts Server Action IDs with a key that's randomly generated at build time unless this is set — so every fresh build (every Vercel deploy, or every `docker build`/Render deploy of the Dockerfile below) mints a different key and invalidates every Server Action ID any already-loaded client JS still references. A browser with a tab open from before the deploy (or a stale cached chunk) then gets `UnrecognizedActionError: Server Action "..." was not found on the server` on the next action call — this is what broke the "Continue with Google" button (`signInWithGoogleAction`) after a deploy; it is a build-config issue, not an OAuth config issue.
+
+Fix: set `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` to a stable base64-encoded AES key (16, 24, or 32 bytes) as a **build-time** environment variable, and never change it:
+
+```bash
+openssl rand -base64 32
+```
+
+- **Vercel:** add it in Settings → Environment Variables. Vercel exposes environment variables to the build by default, which is what's needed here — just make sure it's defined for the Production environment and is not removed/regenerated on a later edit.
+- **Docker / Render:** the Dockerfile declares `ARG NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` in the builder stage; pass the same value as a build arg every time (Render forwards dashboard-configured build-time environment variables to matching Dockerfile `ARG`s automatically — confirm this in the Render dashboard for this service if you rely on it).
+
+Generate the value once, store it in your password manager or the platform's secret store, and reuse the exact same value for every future build. Rotating it isn't dangerous in itself, but it has the identical effect of not setting it at all — anyone with an open tab across the rotation hits the same error — so only rotate deliberately and treat it as a breaking change communicated to active users, not a routine secret rotation.
 
 ### Database migrations in production
 
-Neither CI nor the Docker image applies migrations. Run them against the production database whenever a push adds a migration under `prisma/migrations`:
+Neither CI nor Vercel's build applies migrations. Run them against the production database whenever a push adds a migration under `prisma/migrations`:
 
 ```bash
 DATABASE_URL="<production connection string>" npm run db:deploy   # prisma migrate deploy
 ```
 
-Do this from a trusted machine or the Render shell, before or right after the deploy. Never use `prisma migrate dev` or `migrate reset` against production.
+Do this from a trusted machine, before or right after the deploy (Vercel does not provide a shell into its serverless functions). Never use `prisma migrate dev` or `migrate reset` against production.
 
 ### Manual deploy and rollback
 
-- Manual deploy: Render dashboard, choose the service, Manual Deploy, Deploy latest commit (or "Clear build cache & deploy").
-- Rollback: Render dashboard, Events or Deploys, pick a previous successful deploy and choose Rollback. This restores the previous image only. It does not undo database migrations, so keep migrations backward compatible.
+- Manual deploy: Vercel dashboard, Deployments tab, redeploy the latest (or a specific) commit.
+- Rollback: Vercel dashboard, Deployments tab, pick a previous successful deployment and promote it to production. This restores the previous build only. It does not undo database migrations, so keep migrations backward compatible.
 
 ## Troubleshooting
 
 - **Cannot reach the app at localhost:3000 with `docker compose up`:** the container listens on 10000 and compose maps `3000:10000`. If you edited the mapping, restore it.
 - **Prisma cannot connect locally:** confirm `.env` uses port `5433` and `docker compose ps` shows the db as healthy.
 - **Port 5433 already in use:** stop whatever holds it. Do not switch to 5432.
-- **Render deploy loops or restarts:** check the health path is `/api/health` and the service port is 10000.
 - **Tables or columns missing in production:** migrations were not applied. Run `npm run db:deploy` against the production DB.
-- **Sign-in fails in production:** check `AUTH_SECRET`, `AUTH_TRUST_HOST=true` and `NEXT_PUBLIC_APP_URL`.
-- **Keep-alive workflow fails:** `APP_HEALTH_URL` repository variable is missing or wrong.
+- **Sign-in fails in production:** check `AUTH_SECRET`, `AUTH_TRUST_HOST=true` and `NEXT_PUBLIC_APP_URL` in the Vercel project's environment variables.
+- **"Continue with Google" (or any Server Action) fails with `UnrecognizedActionError: Server Action "..." was not found on the server`:** `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` is missing or was changed on the latest build, so previously issued Server Action IDs no longer decrypt. Set it as a stable build-time env var and redeploy — see "Environment variables" above. Existing open tabs from before the fix still need a hard reload.
 - **CI fails on format:** run `npm run format` and commit.
 - **Build fails after schema change:** run `npm run db:generate`.
 
@@ -138,4 +144,4 @@ Do this from a trusted machine or the Render shell, before or right after the de
 - Passwords are hashed with Argon2id.
 - localStorage-backed features (Nutrition, Body, AI Coach) store data unencrypted in the browser and are not synced across devices.
 - Password-reset emails are not sent in production yet, because no email provider is wired up.
-- Restrict production database access and keep `DATABASE_URL` only in the Render dashboard.
+- Restrict production database access and keep `DATABASE_URL` only in the Vercel project's Environment Variables (never in `NEXT_PUBLIC_*`).

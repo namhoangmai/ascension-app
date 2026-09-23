@@ -34,6 +34,14 @@ description is handed to before any implementing role starts work.
   `client-store.ts` and UI) so no two roles are told to edit the same file.
 - Name which role owns TESTING follow-up and confirm a REVIEWER pass is the
   last job in every breakdown.
+- Require the last implementing job in every breakdown (the final BACKEND,
+  FRONTEND, or TESTING job that runs before REVIEWER) to finish with:
+  `npm run format` (auto-fixes formatting in the files that job touched),
+  then `npm run verify` to confirm it is clean. A `format:check` failure must
+  not be left for REVIEWER to merely flag — it must be fixed before hand-off.
+  This is scoped strictly to files the task itself touched; a pre-existing
+  formatting failure on an unrelated file is out of scope for the job and
+  must be flagged back to the requester, not silently fixed.
 - Flag ambiguous or underspecified tasks back to the requester instead of
   guessing a role split.
 
@@ -108,4 +116,8 @@ Report back as:
   from that role's own doc rather than re-derived.
 - No job asks a role to touch a path outside its own allowed list.
 - The breakdown includes a terminal REVIEWER job.
+- The last implementing job in the breakdown is required to run
+  `npm run format` then `npm run verify` on its own touched files before
+  REVIEWER's pass, so no `format:check` failure is left unresolved at task
+  completion.
 - No product file was created or modified by this role.
