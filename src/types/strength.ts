@@ -49,6 +49,16 @@ export interface ExerciseHistoryEntry {
   sets: StrengthSet[];
 }
 
+export interface ExerciseLibraryEntry {
+  name: string;
+  lastWorkoutId: string;
+  lastDate: string;
+  lastStartTime: string;
+  notes: string;
+  sets: { weight: number | null; reps: number | null; rir: number | null }[];
+  sessionCount: number;
+}
+
 export interface ExercisePersonalRecords {
   highestWeight: number;
   bestEstimatedOneRepMax: number;

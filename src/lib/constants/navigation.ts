@@ -1,13 +1,4 @@
-import {
-  Activity,
-  BarChart3,
-  Bot,
-  Dumbbell,
-  Scale,
-  Settings,
-  UserCircle,
-  Utensils
-} from "lucide-react";
+import { Activity, BarChart3, Bot, Dumbbell, Scale, UserCircle, Utensils } from "lucide-react";
 
 export const primaryNavigation = [
   {
@@ -39,11 +30,6 @@ export const primaryNavigation = [
     label: "Analytics",
     href: "/analytics",
     icon: BarChart3
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: Settings
   },
   {
     label: "Profile",

@@ -275,15 +275,74 @@ describe("sign-in with username", () => {
     });
   });
 
-  it("username lookup is an exact match, not case-insensitive", async () => {
+  it("username lookup is case-insensitive", async () => {
     const { username } = await seedPasswordUserWithUsername("CaseSensitive1");
 
-    expect(await signInAs(username.toUpperCase(), GOOD_PASSWORD)).toEqual(GENERIC_SIGN_IN);
+    await expect(signInAs(username.toUpperCase(), GOOD_PASSWORD)).rejects.toThrow("NEXT_REDIRECT");
     await expect(signInAs(username, GOOD_PASSWORD)).rejects.toThrow("NEXT_REDIRECT");
+  });
+
+  it("username lookup is case-insensitive even with multiple accounts present (matches only the right one)", async () => {
+    const decoy = await seedPasswordUserWithUsername("totally_different");
+    const { username, user } = await seedPasswordUserWithUsername("CaseSensitive1");
+
+    await expect(signInAs(username.toUpperCase(), GOOD_PASSWORD)).rejects.toThrow("NEXT_REDIRECT");
+    expect(authorizeResult).toMatchObject({ id: user.id });
+    expect(authorizeResult).not.toMatchObject({ id: decoy.user.id });
   });
 
   it("unknown username gives the same generic error as unknown email or wrong password", async () => {
     expect(await signInAs("no-such-user-xyz", GOOD_PASSWORD)).toEqual(GENERIC_SIGN_IN);
+  });
+
+  // Prisma compiles an insensitive `equals` to an unescaped ILIKE: without escaping, "%" matches
+  // every account and "_" any single character, so these would resolve to (and password-check)
+  // an arbitrary account, each variant getting its own rate-limit bucket.
+  it.each(["%", "%%", "a%", "alice%", "%_92", "_lice_92", "alice_9_"])(
+    "wildcard identifier %j never resolves to an account",
+    async (identifier) => {
+      await seedPasswordUserWithUsername("alice_92");
+
+      expect(await signInAs(identifier, GOOD_PASSWORD)).toEqual(GENERIC_SIGN_IN);
+      expect(authorizeResult).toBeNull();
+    }
+  );
+
+  it("an underscore in the identifier is a literal underscore, not 'any character'", async () => {
+    const lookalike = await seedPasswordUserWithUsername("johnxdoe");
+    const real = await seedPasswordUserWithUsername("john_doe");
+
+    await expect(signInAs("john_doe", GOOD_PASSWORD)).rejects.toThrow("NEXT_REDIRECT");
+    expect(authorizeResult).toMatchObject({ id: real.user.id });
+    expect(authorizeResult).not.toMatchObject({ id: lookalike.user.id });
+  });
+
+  it("an underscore does not match a lookalike when it is the only account", async () => {
+    await seedPasswordUserWithUsername("johnxdoe");
+
+    expect(await signInAs("john_doe", GOOD_PASSWORD)).toEqual(GENERIC_SIGN_IN);
+  });
+
+  // Legacy data from before names were case-insensitive may hold "Bob" and "bob" until the
+  // lower(username) unique index is applied. Never guess between them.
+  describe("legacy usernames that differ only by case (before the unique index exists)", () => {
+    it("fails closed for a case variant that matches neither exactly", async () => {
+      await seedPasswordUserWithUsername("Bob", true, "BobPassword123x");
+      await seedPasswordUserWithUsername("bob", true, "bobPassword123x");
+
+      expect(await signInAs("BOB", "BobPassword123x")).toEqual(GENERIC_SIGN_IN);
+      expect(await signInAs("BOB", "bobPassword123x")).toEqual(GENERIC_SIGN_IN);
+    });
+
+    it("still resolves an exact-case match, so both accounts keep working", async () => {
+      const upper = await seedPasswordUserWithUsername("Bob", true, "BobPassword123x");
+      const lower = await seedPasswordUserWithUsername("bob", true, "bobPassword123x");
+
+      await expect(signInAs("Bob", "BobPassword123x")).rejects.toThrow("NEXT_REDIRECT");
+      expect(authorizeResult).toMatchObject({ id: upper.user.id });
+      await expect(signInAs("bob", "bobPassword123x")).rejects.toThrow("NEXT_REDIRECT");
+      expect(authorizeResult).toMatchObject({ id: lower.user.id });
+    });
   });
 
   it("an identifier containing @ is always treated as an email lookup, even if it matches a username", async () => {

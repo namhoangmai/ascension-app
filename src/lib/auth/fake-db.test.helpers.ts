@@ -7,6 +7,31 @@
  */
 export type Row = Record<string, any>;
 
+/**
+ * PostgreSQL `ILIKE` with the default `\` escape, which is what Prisma compiles
+ * `{ equals, mode: "insensitive" }` to. Modelled faithfully (unescaped `%`/`_` are wildcards) so
+ * tests catch a caller that forgets `equalsIgnoreCase`.
+ */
+function ilike(actual: string, pattern: string): boolean {
+  let source = "";
+
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern.charAt(i);
+
+    if (char === "\\" && i + 1 < pattern.length) {
+      source += pattern.charAt(++i).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    } else if (char === "%") {
+      source += "[\\s\\S]*";
+    } else if (char === "_") {
+      source += "[\\s\\S]";
+    } else {
+      source += char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+
+  return new RegExp(`^${source}$`, "i").test(actual);
+}
+
 function matches(row: Row, where: Row | undefined): boolean {
   if (!where) return true;
 
@@ -17,6 +42,16 @@ function matches(row: Row, where: Row | undefined): boolean {
       if ("lt" in expected && !(actual < expected.lt)) return false;
       if ("gt" in expected && !(actual > expected.gt)) return false;
       if ("not" in expected && actual === expected.not) return false;
+      if ("equals" in expected) {
+        // Supports Prisma's `{ equals, mode: "insensitive" }` shape (used by the case-insensitive
+        // username lookups; an ILIKE, so wildcards apply) as well as a plain `{ equals }`.
+        const isCaseInsensitive = expected.mode === "insensitive";
+        const matchesEquals =
+          isCaseInsensitive && typeof actual === "string" && typeof expected.equals === "string"
+            ? ilike(actual, expected.equals as string)
+            : actual === expected.equals;
+        if (!matchesEquals) return false;
+      }
       return true;
     }
 
@@ -80,17 +115,26 @@ export class FakeTable {
     return select ? this.relations({ ...row }, select) : { ...row };
   }
 
-  async findMany({ where, orderBy }: { where?: Row; orderBy?: Row } = {}) {
+  async findMany({
+    where,
+    orderBy,
+    select,
+    take
+  }: { where?: Row; orderBy?: Row; select?: Row; take?: number } = {}) {
     return this.sorted(
       this.rows.filter((r) => matches(r, where)),
       orderBy
-    ).map((r) => ({ ...r }));
+    )
+      .slice(0, take)
+      .map((r) => (select ? this.relations({ ...r }, select) : { ...r }));
   }
 
   async update({ where, data }: { where: Row; data: Row }) {
     const row = this.rows.find((r) => matches(r, where));
     if (!row) throw Object.assign(new Error("Record not found"), { code: "P2025" });
-    applyData(row, data);
+    const rest = { ...data };
+    delete rest.preferences; // nested relation writes are not modelled
+    applyData(row, rest);
     return { ...row };
   }
 
@@ -102,10 +146,21 @@ export class FakeTable {
     return { count: found.length };
   }
 
+  async upsert({ where, create, update }: { where: Row; create: Row; update: Row }) {
+    const row = this.rows.find((r) => matches(r, where));
+    if (!row) return this.create({ data: create });
+    applyData(row, update);
+    return { ...row };
+  }
+
   async deleteMany({ where }: { where?: Row } = {}) {
     const before = this.rows.length;
     this.rows = this.rows.filter((r) => !matches(r, where));
     return { count: before - this.rows.length };
+  }
+
+  async count({ where }: { where?: Row } = {}) {
+    return this.rows.filter((r) => matches(r, where)).length;
   }
 }
 
@@ -113,7 +168,9 @@ export interface FakeDb {
   user: FakeTable;
   userProfile: FakeTable;
   emailVerificationCode: FakeTable;
+  passwordChangeCode: FakeTable;
   passwordResetToken: FakeTable;
+  feedback: FakeTable;
   session: FakeTable;
   $transaction: (arg: ((tx: FakeDb) => Promise<unknown>) | Promise<unknown>[]) => Promise<unknown>;
   reset: () => void;
@@ -133,24 +190,36 @@ export function createFakeDb(): FakeDb {
       includeOrSelect.user ? { ...row, user: user.rows.find((u) => u.id === row.userId) } : row
   );
   const emailVerificationCode = new FakeTable(() => ({ usedAt: null, attempts: 0 }));
+  const passwordChangeCode = new FakeTable(() => ({ usedAt: null, attempts: 0 }));
   const passwordResetToken = new FakeTable(
     () => ({ usedAt: null }),
     (row, include) =>
       include.user ? { ...row, user: user.rows.find((u) => u.id === row.userId) } : row
   );
+  const feedback = new FakeTable(() => ({ status: "NEW" }));
   const session = new FakeTable(() => ({}));
 
   const db: FakeDb = {
     user,
     userProfile,
     emailVerificationCode,
+    passwordChangeCode,
     passwordResetToken,
+    feedback,
     session,
     async $transaction(arg) {
       return typeof arg === "function" ? arg(db) : Promise.all(arg);
     },
     reset() {
-      for (const table of [user, userProfile, emailVerificationCode, passwordResetToken, session]) {
+      for (const table of [
+        user,
+        userProfile,
+        emailVerificationCode,
+        passwordChangeCode,
+        passwordResetToken,
+        feedback,
+        session
+      ]) {
         table.rows = [];
       }
     }

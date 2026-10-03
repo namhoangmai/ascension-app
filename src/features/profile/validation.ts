@@ -63,6 +63,18 @@ export const profileImageDataUrlSchema = z
   )
   .transform((value) => (value === "" ? undefined : value));
 
+/**
+ * Shared with `accountDetailsInputSchema` below — keep both in sync. The label only affects the
+ * error wording (the onboarding form calls this field "Display name", Settings calls it "Username").
+ */
+const usernameSchemaFor = (label: "Display name" | "Username") =>
+  z
+    .string()
+    .trim()
+    .min(2, `${label} is required.`)
+    .max(32, `${label} is too long.`)
+    .regex(/^[a-zA-Z0-9_.-]+$/, "Use letters, numbers, dots, dashes, or underscores.");
+
 export const profileInputSchema = z
   .object({
     profileImageDataUrl: profileImageDataUrlSchema,
@@ -72,12 +84,7 @@ export const profileInputSchema = z
       .min(1, "First name is required.")
       .max(40, "First name is too long."),
     lastName: z.string().trim().min(1, "Last name is required.").max(40, "Last name is too long."),
-    username: z
-      .string()
-      .trim()
-      .min(2, "Display name is required.")
-      .max(32, "Display name is too long.")
-      .regex(/^[a-zA-Z0-9_.-]+$/, "Use letters, numbers, dots, dashes, or underscores."),
+    username: usernameSchemaFor("Display name"),
     dateOfBirth: z
       .string()
       .trim()
@@ -133,3 +140,18 @@ export const profileInputSchema = z
   });
 
 export type ProfileInput = z.infer<typeof profileInputSchema>;
+
+const requiredDateOfBirthSchema = z
+  .string()
+  .trim()
+  .min(1, "Date of birth is required.")
+  .transform((value) => new Date(`${value}T00:00:00.000Z`))
+  .refine((value) => !Number.isNaN(value.getTime()), "Enter a valid date.")
+  .refine((value) => value <= new Date(), "Date of birth cannot be in the future.");
+
+export const accountDetailsInputSchema = z.object({
+  username: usernameSchemaFor("Username"),
+  dateOfBirth: requiredDateOfBirthSchema
+});
+
+export type AccountDetailsInput = z.infer<typeof accountDetailsInputSchema>;

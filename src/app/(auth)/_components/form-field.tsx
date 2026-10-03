@@ -10,7 +10,7 @@ import { FormMessage } from "./form-message";
 interface FormFieldProps {
   label: string;
   name: string;
-  type?: "email" | "password" | "text";
+  type?: "email" | "password" | "text" | "date";
   autoComplete?: string;
   placeholder?: string;
   error?: string[] | undefined;

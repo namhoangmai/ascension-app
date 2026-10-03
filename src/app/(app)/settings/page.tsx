@@ -1,27 +1,8 @@
-import { Settings } from "lucide-react";
+import { redirect } from "next/navigation";
 
-import { FeatureCard } from "@/components/shared/feature-card";
-import { SectionHeading } from "@/components/shared/section-heading";
-import { getPasswordStatus } from "@/lib/auth/server";
-
-import { ChangePasswordForm } from "./_components/change-password-form";
-
-export default async function SettingsPage() {
-  const { hasPassword } = await getPasswordStatus();
-
-  return (
-    <div className="space-y-6">
-      <SectionHeading
-        eyebrow="Phase 2+"
-        title="Settings"
-        description="Account, units, rest preferences, nutrition goals, and security controls will be added after authentication."
-      />
-      <ChangePasswordForm hasPassword={hasPassword} />
-      <FeatureCard
-        icon={Settings}
-        title="Preference model"
-        description="Default rest time, weight increments, unit system, and preferred meal types are represented in the database."
-      />
-    </div>
-  );
+// `/settings`'s content has been absorbed into `/profile` (see the ProfileSettingsPanel there).
+// This route is kept only so old bookmarks and the installed PWA's cached shell still land
+// somewhere useful instead of a stale or broken page.
+export default function SettingsPage() {
+  redirect("/profile");
 }

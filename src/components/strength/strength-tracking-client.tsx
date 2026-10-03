@@ -19,7 +19,7 @@ import {
   X
 } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CartesianGrid,
   Line,
@@ -30,14 +30,17 @@ import {
   YAxis
 } from "recharts";
 
+import { ExerciseLibrary } from "@/components/strength/exercise-library";
 import { Button } from "@/components/ui/button";
 import {
   STRENGTH_DRAFT_STORAGE_KEY,
+  buildExerciseLibrary,
   clearStrengthDraft,
   createEmptySet,
   createExerciseEntry,
   createTemplate,
   createWorkoutDraft,
+  fillSetFromPrevious,
   filterProgressByRange,
   formatSet,
   formatWorkoutDate,
@@ -52,6 +55,8 @@ import {
   loadStrengthDraft,
   loadStrengthTemplates,
   loadStrengthWorkouts,
+  parseDecimalInput,
+  rankExerciseSuggestions,
   saveStrengthTemplates,
   slugifyExerciseName
 } from "@/features/strength/client-store";
@@ -63,6 +68,7 @@ import {
 import { cn } from "@/lib/utils";
 import type {
   ExerciseHistoryEntry,
+  ExerciseLibraryEntry,
   StrengthExerciseEntry,
   StrengthRange,
   StrengthSet,
@@ -70,7 +76,7 @@ import type {
   StrengthWorkout
 } from "@/types/strength";
 
-type TabKey = "history" | "templates";
+type TabKey = "history" | "templates" | "exercises";
 type ChartMetric = "estimatedOneRepMax" | "highestWeight" | "trainingVolume" | "averageReps";
 
 const RANGE_OPTIONS: { value: StrengthRange; label: string }[] = [
@@ -165,6 +171,7 @@ export function StrengthTrackingClient({
     [workouts]
   );
   const inProgressWorkout = workouts.find(isInProgressWorkout);
+  const exerciseLibrary = useMemo(() => buildExerciseLibrary(workouts), [workouts]);
 
   const sortedWorkouts = useMemo(
     () =>
@@ -387,14 +394,15 @@ export function StrengthTrackingClient({
             <h1 className="text-title font-semibold tracking-tight">Strength Tracking</h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Log sessions</p>
           </div>
-          <div className="flex rounded-full border border-border bg-muted p-1">
+          <div className="grid grid-cols-3 rounded-full border border-border bg-muted p-1 sm:flex">
             <TabButton
               active={activeTab === "history"}
               onClick={() => {
                 setActiveTab("history");
               }}
             >
-              Workout History
+              <span className="sm:hidden">History</span>
+              <span className="hidden sm:inline">Workout History</span>
             </TabButton>
             <TabButton
               active={activeTab === "templates"}
@@ -402,7 +410,17 @@ export function StrengthTrackingClient({
                 setActiveTab("templates");
               }}
             >
-              Workout Templates
+              <span className="sm:hidden">Templates</span>
+              <span className="hidden sm:inline">Workout Templates</span>
+            </TabButton>
+            <TabButton
+              active={activeTab === "exercises"}
+              onClick={() => {
+                setActiveTab("exercises");
+              }}
+            >
+              <span className="sm:hidden">Exercises</span>
+              <span className="hidden sm:inline">Exercise Library</span>
             </TabButton>
           </div>
         </header>
@@ -427,6 +445,8 @@ export function StrengthTrackingClient({
               onDeleteWorkout={deleteWorkout}
             />
           </>
+        ) : activeTab === "exercises" ? (
+          <ExerciseLibrary library={exerciseLibrary} />
         ) : (
           <TemplateList
             templates={templates}
@@ -489,42 +509,44 @@ export function StrengthTrackingClient({
         >
           <Plus className="size-8" aria-hidden="true" />
         </Button>
-
-        <AnimatePresence>
-          {draft ? (
-            <WorkoutEditor
-              key={draft.id}
-              draft={draft}
-              workouts={completedWorkouts}
-              onChange={setDraft}
-              onClose={() => {
-                closeDraftEditor();
-              }}
-              onContinue={() => submitDraft("continue")}
-              onEnd={() => submitDraft("end")}
-              onCancel={cancelDraft}
-              isSaving={isSavingWorkout}
-              isCancelling={isCancelling}
-              saveState={saveState}
-              error={editorError}
-              conflictWorkoutId={conflictWorkoutId}
-              onResumeConflict={resumeWorkout}
-            />
-          ) : null}
-
-          {templateDraft ? (
-            <TemplateEditor
-              key={templateDraft.id}
-              template={templateDraft}
-              onChange={setTemplateDraft}
-              onClose={() => {
-                setTemplateDraft(null);
-              }}
-              onSave={saveTemplateDraft}
-            />
-          ) : null}
-        </AnimatePresence>
       </div>
+
+      {/* Outside the space-y wrapper: its sibling margin would offset these fixed overlays. */}
+      <AnimatePresence>
+        {draft ? (
+          <WorkoutEditor
+            key={draft.id}
+            draft={draft}
+            workouts={completedWorkouts}
+            library={exerciseLibrary}
+            onChange={setDraft}
+            onClose={() => {
+              closeDraftEditor();
+            }}
+            onContinue={() => submitDraft("continue")}
+            onEnd={() => submitDraft("end")}
+            onCancel={cancelDraft}
+            isSaving={isSavingWorkout}
+            isCancelling={isCancelling}
+            saveState={saveState}
+            error={editorError}
+            conflictWorkoutId={conflictWorkoutId}
+            onResumeConflict={resumeWorkout}
+          />
+        ) : null}
+
+        {templateDraft ? (
+          <TemplateEditor
+            key={templateDraft.id}
+            template={templateDraft}
+            onChange={setTemplateDraft}
+            onClose={() => {
+              setTemplateDraft(null);
+            }}
+            onSave={saveTemplateDraft}
+          />
+        ) : null}
+      </AnimatePresence>
     </MotionConfig>
   );
 }
@@ -536,7 +558,7 @@ function TabButton({
 }: {
   active: boolean;
   onClick: () => void;
-  children: string;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -627,7 +649,7 @@ function WorkoutHistory({
       <AnimatePresence>
         {selectedWorkout ? (
           <motion.div
-            className="fixed inset-0 z-40 bg-background/80 p-4 backdrop-blur-xl lg:hidden"
+            className="fixed inset-0 z-50 bg-background/80 p-4 backdrop-blur-xl lg:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -858,6 +880,7 @@ function TemplateList({
 function WorkoutEditor({
   draft,
   workouts,
+  library,
   onChange,
   onClose,
   onContinue,
@@ -872,6 +895,7 @@ function WorkoutEditor({
 }: {
   draft: StrengthWorkout;
   workouts: StrengthWorkout[];
+  library: ExerciseLibraryEntry[];
   onChange: (draft: StrengthWorkout) => void;
   onClose: () => void;
   onContinue: () => void | Promise<void>;
@@ -925,184 +949,196 @@ function WorkoutEditor({
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 overflow-y-auto bg-background/90 p-4 backdrop-blur-xl"
+      className="fixed inset-0 z-50 overflow-y-auto bg-background/90 backdrop-blur-xl sm:p-4"
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 16 }}
     >
-      <div className="mx-auto max-w-3xl space-y-5 rounded-2xl border border-border bg-card p-4 shadow-xl shadow-black/5 dark:shadow-black/40 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm text-primary">New Workout</p>
-            <h2 className="text-2xl font-semibold tracking-normal">Log session</h2>
+      <div className="mx-auto flex min-h-full max-w-3xl flex-col bg-card pt-[env(safe-area-inset-top)] shadow-xl shadow-black/5 dark:shadow-black/40 sm:min-h-0 sm:rounded-2xl sm:border sm:border-border sm:pt-0">
+        <div className="flex-1 space-y-5 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm text-primary">New Workout</p>
+              <h2 className="text-2xl font-semibold tracking-normal">Log session</h2>
+            </div>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close new workout">
+              <X className="size-5" aria-hidden="true" />
+            </Button>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close new workout">
-            <X className="size-5" aria-hidden="true" />
-          </Button>
-        </div>
 
-        <section className="grid gap-3 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-2">
-          <TextField
-            label="Workout Name"
-            value={draft.name ?? ""}
-            onChange={(name) => {
-              onChange({ ...draft, name, updatedAt: Date.now() });
-            }}
-            placeholder="Workout Session"
-          />
-          <TextField
-            label="Date"
-            type="date"
-            value={draft.date}
-            onChange={(date) => {
-              onChange({ ...draft, date, updatedAt: Date.now() });
-            }}
-          />
-          <TextField
-            label="Start Time"
-            type="time"
-            value={draft.startTime}
-            onChange={(startTime) => {
-              onChange({ ...draft, startTime, updatedAt: Date.now() });
-            }}
-          />
-          <TextField
-            label="End Time"
-            type="time"
-            value={draft.endTime ?? ""}
-            onChange={(endTime) => {
-              onChange({ ...draft, endTime, updatedAt: Date.now() });
-            }}
-          />
-          <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-medium text-muted-foreground">Notes</span>
-            <textarea
-              value={draft.notes ?? ""}
-              onChange={(event) => {
-                onChange({ ...draft, notes: event.target.value, updatedAt: Date.now() });
+          <section className="grid gap-3 rounded-md border border-border bg-background/50 p-3 sm:grid-cols-2">
+            <TextField
+              label="Workout Name"
+              value={draft.name ?? ""}
+              onChange={(name) => {
+                onChange({ ...draft, name, updatedAt: Date.now() });
               }}
-              className="min-h-20 w-full rounded-md border border-border bg-muted px-3 py-2 text-sm outline-none focus:border-foreground"
+              placeholder="Workout Session"
             />
-          </label>
-        </section>
-
-        <div className="space-y-4">
-          {draft.exercises.map((exercise, exerciseIndex) => (
-            <ExerciseEditor
-              key={exercise.id}
-              exercise={exercise}
-              index={exerciseIndex}
-              workouts={workouts}
-              currentWorkoutId={draft.id}
-              expanded={expandedExerciseIds.has(exercise.id)}
-              onToggleExpanded={() => {
-                toggleExerciseExpanded(exercise.id);
-              }}
-              onChange={(nextExercise) => {
-                updateExercise(exercise.id, nextExercise);
-              }}
-              onRemove={() => {
-                onChange({
-                  ...draft,
-                  exercises: draft.exercises.filter((item) => item.id !== exercise.id),
-                  updatedAt: Date.now()
-                });
-                setExpandedExerciseIds((current) => {
-                  const next = new Set(current);
-                  next.delete(exercise.id);
-                  return next;
-                });
+            <TextField
+              label="Date"
+              type="date"
+              value={draft.date}
+              onChange={(date) => {
+                onChange({ ...draft, date, updatedAt: Date.now() });
               }}
             />
-          ))}
-        </div>
+            <TextField
+              label="Start Time"
+              type="time"
+              value={draft.startTime}
+              onChange={(startTime) => {
+                onChange({ ...draft, startTime, updatedAt: Date.now() });
+              }}
+            />
+            <TextField
+              label="End Time"
+              type="time"
+              value={draft.endTime ?? ""}
+              onChange={(endTime) => {
+                onChange({ ...draft, endTime, updatedAt: Date.now() });
+              }}
+            />
+            <label className="space-y-2 sm:col-span-2">
+              <span className="text-sm font-medium text-muted-foreground">Notes</span>
+              <textarea
+                value={draft.notes ?? ""}
+                onChange={(event) => {
+                  onChange({ ...draft, notes: event.target.value, updatedAt: Date.now() });
+                }}
+                className="min-h-20 w-full rounded-md border border-border bg-muted px-3 py-2 text-base outline-none focus:border-foreground sm:text-sm"
+              />
+            </label>
+          </section>
 
-        <div className="flex flex-wrap gap-3">
-          <Button variant="outline" onClick={addExercise}>
+          <div className="space-y-4">
+            {draft.exercises.map((exercise, exerciseIndex) => (
+              <ExerciseEditor
+                key={exercise.id}
+                exercise={exercise}
+                index={exerciseIndex}
+                workouts={workouts}
+                library={library}
+                currentWorkoutId={draft.id}
+                expanded={expandedExerciseIds.has(exercise.id)}
+                onToggleExpanded={() => {
+                  toggleExerciseExpanded(exercise.id);
+                }}
+                onChange={(nextExercise) => {
+                  updateExercise(exercise.id, nextExercise);
+                }}
+                onRemove={() => {
+                  onChange({
+                    ...draft,
+                    exercises: draft.exercises.filter((item) => item.id !== exercise.id),
+                    updatedAt: Date.now()
+                  });
+                  setExpandedExerciseIds((current) => {
+                    const next = new Set(current);
+                    next.delete(exercise.id);
+                    return next;
+                  });
+                }}
+              />
+            ))}
+          </div>
+
+          <Button variant="outline" className="w-full sm:w-auto" onClick={addExercise}>
             <Plus className="size-4" aria-hidden="true" />
             Add Exercise
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              void onContinue();
-            }}
-            disabled={busy}
-          >
-            <Save className="size-4" aria-hidden="true" />
-            {saveState === "saving"
-              ? "Saving..."
-              : saveState === "saved"
-                ? "Saved"
-                : "Continue Workout"}
-          </Button>
-          <Button
-            onClick={() => {
-              void onEnd();
-            }}
-            disabled={busy}
-          >
-            <Check className="size-4" aria-hidden="true" />
-            End Workout
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setConfirmingCancel(true);
-            }}
-            disabled={busy}
-          >
-            <X className="size-4" aria-hidden="true" />
-            Cancel Workout
-          </Button>
         </div>
 
-        {error ? (
-          <div className="flex flex-col gap-2 rounded-md border border-foreground/30 bg-muted p-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
-            <span>{error}</span>
-            {conflictWorkoutId ? (
-              <Button
-                size="sm"
-                onClick={() => {
-                  onResumeConflict(conflictWorkoutId);
-                }}
-              >
-                Resume
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+        <div className="sticky bottom-0 space-y-3 border-t border-border bg-card/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur-xl sm:rounded-b-2xl sm:px-5 sm:pb-4">
+          {error ? (
+            <div className="flex flex-col gap-2 rounded-md border border-foreground/30 bg-muted p-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+              <span>{error}</span>
+              {conflictWorkoutId ? (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    onResumeConflict(conflictWorkoutId);
+                  }}
+                >
+                  Resume
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
 
-        {confirmingCancel ? (
-          <div
-            role="alertdialog"
-            aria-label="Confirm cancel workout"
-            className="space-y-3 rounded-md border border-foreground/30 bg-muted p-3"
-          >
-            <p className="text-sm">Cancel this workout? Your entries will be discarded.</p>
-            <div className="flex gap-2">
+          {confirmingCancel ? (
+            <div
+              role="alertdialog"
+              aria-label="Confirm cancel workout"
+              className="space-y-3 rounded-md border border-foreground/30 bg-muted p-3"
+            >
+              <p className="text-sm">Cancel this workout? Your entries will be discarded.</p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setConfirmingCancel(false);
+                  }}
+                  disabled={isCancelling}
+                >
+                  Keep Workout
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    void onCancel();
+                  }}
+                  disabled={isCancelling}
+                >
+                  {isCancelling ? "Cancelling..." : "Yes, Cancel"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-2 sm:flex-row-reverse sm:items-center sm:justify-between">
+            <div className="grid grid-cols-2 gap-2 sm:flex">
               <Button
                 variant="outline"
-                size="sm"
+                className="px-3 sm:px-5"
                 onClick={() => {
-                  setConfirmingCancel(false);
+                  void onContinue();
                 }}
-                disabled={isCancelling}
+                disabled={busy}
               >
-                Keep Workout
+                <Save className="size-4" aria-hidden="true" />
+                {saveState === "saving"
+                  ? "Saving..."
+                  : saveState === "saved"
+                    ? "Saved"
+                    : "Continue Workout"}
               </Button>
               <Button
-                size="sm"
+                className="px-3 sm:px-5"
                 onClick={() => {
-                  void onCancel();
+                  void onEnd();
                 }}
-                disabled={isCancelling}
+                disabled={busy}
               >
-                {isCancelling ? "Cancelling..." : "Yes, Cancel"}
+                <Check className="size-4" aria-hidden="true" />
+                End Workout
               </Button>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => {
+                setConfirmingCancel(true);
+              }}
+              disabled={busy}
+            >
+              <X className="size-4" aria-hidden="true" />
+              Cancel Workout
+            </Button>
           </div>
-        ) : null}
+        </div>
       </div>
     </motion.div>
   );
@@ -1112,6 +1148,7 @@ function ExerciseEditor({
   exercise,
   index,
   workouts,
+  library,
   currentWorkoutId,
   expanded,
   onToggleExpanded,
@@ -1121,6 +1158,7 @@ function ExerciseEditor({
   exercise: StrengthExerciseEntry;
   index: number;
   workouts: StrengthWorkout[];
+  library: ExerciseLibraryEntry[];
   currentWorkoutId: string;
   expanded: boolean;
   onToggleExpanded: () => void;
@@ -1130,11 +1168,33 @@ function ExerciseEditor({
   const previousSession = exercise.name.trim()
     ? getPreviousExerciseSession(workouts, exercise.name, currentWorkoutId)
     : undefined;
+  const suggestions = rankExerciseSuggestions(exercise.name, library);
+  const showSuggestions = !suggestions.some((entry) => entry.name === exercise.name);
+  // The server persists one rest value per exercise, so the editor stores it on every set.
+  const restSeconds = exercise.sets.find((set) => set.restSeconds != null)?.restSeconds ?? null;
 
   function updateSet(setId: string, nextSet: StrengthSet) {
     onChange({
       ...exercise,
       sets: exercise.sets.map((set) => (set.id === setId ? nextSet : set))
+    });
+  }
+
+  function pickSuggestion(entry: ExerciseLibraryEntry) {
+    const setsAreEmpty = exercise.sets.every(
+      (set) => set.weight === null && set.reps === null && set.rir == null && !set.completed
+    );
+
+    onChange({
+      ...exercise,
+      name: entry.name,
+      notes: exercise.notes?.trim() ? exercise.notes : entry.notes,
+      sets: setsAreEmpty
+        ? Array.from({ length: Math.max(entry.sets.length, 1) }, () => ({
+            ...createEmptySet(),
+            restSeconds
+          }))
+        : exercise.sets
     });
   }
 
@@ -1172,15 +1232,34 @@ function ExerciseEditor({
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <TextField
-                label={`Exercise ${String(index + 1)}`}
-                value={exercise.name}
-                onChange={(name) => {
-                  onChange({ ...exercise, name });
-                }}
-                placeholder="Exercise"
-              />
+            <div className="mt-3 grid grid-cols-[minmax(0,1fr)_6rem] items-start gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_6rem]">
+              <div className="col-span-2 space-y-2 sm:col-span-1">
+                <TextField
+                  label={`Exercise ${String(index + 1)}`}
+                  value={exercise.name}
+                  onChange={(name) => {
+                    onChange({ ...exercise, name });
+                  }}
+                  placeholder="Exercise"
+                />
+                {showSuggestions && suggestions.length > 0 ? (
+                  <ul aria-label="Exercise suggestions" className="flex flex-wrap gap-2">
+                    {suggestions.map((entry) => (
+                      <li key={entry.name}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            pickSuggestion(entry);
+                          }}
+                          className="min-h-9 rounded-full border border-border bg-muted px-3 text-sm transition-colors hover:border-foreground"
+                        >
+                          {entry.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
               <TextField
                 label="Notes"
                 value={exercise.notes ?? ""}
@@ -1188,6 +1267,17 @@ function ExerciseEditor({
                   onChange({ ...exercise, notes });
                 }}
                 placeholder="Notes"
+              />
+              <NumberField
+                label="Rest (s)"
+                visibleLabel
+                value={restSeconds}
+                onChange={(nextRest) => {
+                  onChange({
+                    ...exercise,
+                    sets: exercise.sets.map((set) => ({ ...set, restSeconds: nextRest }))
+                  });
+                }}
               />
             </div>
 
@@ -1197,65 +1287,68 @@ function ExerciseEditor({
 
             <div className="mt-4 space-y-2">
               <AnimatePresence initial={false}>
-                {exercise.sets.map((set, setIndex) => (
-                  <motion.div
-                    key={set.id}
-                    layout
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    className="grid grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_40px] gap-1.5 sm:grid-cols-[52px_repeat(4,minmax(0,1fr))_44px] sm:gap-2"
-                  >
-                    <div className="grid h-11 place-items-center rounded-md bg-muted text-sm text-muted-foreground">
-                      {setIndex + 1}
-                    </div>
-                    <NumberField
-                      label="Weight"
-                      value={set.weight}
-                      decimals={1}
-                      onChange={(weight) => {
-                        updateSet(set.id, { ...set, weight });
-                      }}
-                    />
-                    <NumberField
-                      label="Reps"
-                      value={set.reps}
-                      onChange={(reps) => {
-                        updateSet(set.id, { ...set, reps });
-                      }}
-                    />
-                    <NumberField
-                      label="RIR"
-                      value={set.rir ?? null}
-                      onChange={(rir) => {
-                        updateSet(set.id, { ...set, rir });
-                      }}
-                    />
-                    <NumberField
-                      className="hidden sm:block"
-                      label="Rest"
-                      value={set.restSeconds ?? null}
-                      onChange={(restSeconds) => {
-                        updateSet(set.id, { ...set, restSeconds });
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateSet(set.id, { ...set, completed: !set.completed });
-                      }}
-                      className={cn(
-                        "grid h-11 place-items-center rounded-md border transition-colors",
-                        set.completed
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-muted text-muted-foreground"
-                      )}
-                      aria-label="Toggle set completed"
+                {exercise.sets.map((set, setIndex) => {
+                  const ghost = previousSession?.sets[setIndex];
+
+                  return (
+                    <motion.div
+                      key={set.id}
+                      layout
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="grid grid-cols-[40px_repeat(3,minmax(0,1fr))_44px] gap-1.5 sm:grid-cols-[52px_repeat(3,minmax(0,1fr))_44px] sm:gap-2"
                     >
-                      <Check className="size-4" aria-hidden="true" />
-                    </button>
-                  </motion.div>
-                ))}
+                      <div className="grid h-11 place-items-center rounded-md bg-muted text-sm text-muted-foreground">
+                        {setIndex + 1}
+                      </div>
+                      <NumberField
+                        label="Weight"
+                        value={set.weight}
+                        decimals={2}
+                        placeholder={ghost?.weight}
+                        onChange={(weight) => {
+                          updateSet(set.id, { ...set, weight });
+                        }}
+                      />
+                      <NumberField
+                        label="Reps"
+                        value={set.reps}
+                        placeholder={ghost?.reps}
+                        onChange={(reps) => {
+                          updateSet(set.id, { ...set, reps });
+                        }}
+                      />
+                      <NumberField
+                        label="RIR"
+                        value={set.rir ?? null}
+                        placeholder={ghost?.rir}
+                        onChange={(rir) => {
+                          updateSet(set.id, { ...set, rir });
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const toggled = { ...set, completed: !set.completed };
+                          updateSet(
+                            set.id,
+                            toggled.completed ? fillSetFromPrevious(toggled, ghost) : toggled
+                          );
+                        }}
+                        className={cn(
+                          "grid h-11 place-items-center rounded-md border transition-colors",
+                          set.completed
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-muted text-muted-foreground"
+                        )}
+                        aria-label="Toggle set completed"
+                      >
+                        <Check className="size-4" aria-hidden="true" />
+                      </button>
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
 
@@ -1264,7 +1357,10 @@ function ExerciseEditor({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  onChange({ ...exercise, sets: [...exercise.sets, createEmptySet()] });
+                  onChange({
+                    ...exercise,
+                    sets: [...exercise.sets, { ...createEmptySet(), restSeconds }]
+                  });
                 }}
               >
                 <Plus className="size-4" aria-hidden="true" />
@@ -1633,7 +1729,7 @@ function TextField({
           onChange(event.target.value);
         }}
         placeholder={placeholder}
-        className="h-11 w-full rounded-md border border-border bg-muted px-3 text-sm outline-none focus:border-foreground"
+        className="h-11 w-full rounded-md border border-border bg-muted px-3 text-base outline-none focus:border-foreground sm:text-sm"
       />
     </label>
   );
@@ -1643,37 +1739,65 @@ function NumberField({
   label,
   value,
   onChange,
-  className,
-  decimals = 0
+  decimals = 0,
+  placeholder,
+  visibleLabel = false
 }: {
   label: string;
   value: number | null;
   onChange: (value: number | null) => void;
-  className?: string;
   decimals?: number;
+  placeholder?: number | null | undefined;
+  visibleLabel?: boolean;
 }) {
+  // Local text keeps intermediate input like "12," or "." that isn't a number yet;
+  // type="number" would report those as "" on iOS and wipe the field.
+  const [text, setText] = useState(() => (value === null ? "" : String(value)));
+  const [syncedValue, setSyncedValue] = useState(value);
+
+  function parse(raw: string) {
+    const parsed = parseDecimalInput(raw);
+    const factor = 10 ** decimals;
+    return parsed === null ? null : Math.round(parsed * factor) / factor;
+  }
+
+  if (value !== syncedValue) {
+    setSyncedValue(value);
+    // External change (e.g. ghost fill on tick): adopt it unless it's what the text already says.
+    if (parse(text) !== value) {
+      setText(value === null ? "" : String(value));
+    }
+  }
+
   return (
-    <label className={cn("block min-w-0", className)}>
-      <span className="sr-only">{label}</span>
+    <label className={cn("block min-w-0", visibleLabel && "space-y-2")}>
+      <span className={visibleLabel ? "text-sm font-medium text-muted-foreground" : "sr-only"}>
+        {label}
+      </span>
       <input
-        type="number"
-        inputMode="decimal"
-        step={decimals > 0 ? "0.1" : "0.5"}
-        value={value ?? ""}
+        type="text"
+        inputMode={decimals > 0 ? "decimal" : "numeric"}
+        autoComplete="off"
+        value={text}
         onChange={(event) => {
-          if (event.target.value === "") {
+          const raw = event.target.value;
+          setText(raw);
+
+          if (!raw.trim()) {
             onChange(null);
             return;
           }
 
-          const parsed = Number(event.target.value);
-          const factor = 10 ** decimals;
-          const rounded = decimals > 0 ? Math.round(parsed * factor) / factor : parsed;
-
-          onChange(rounded);
+          const parsed = parse(raw);
+          if (parsed !== null) {
+            onChange(parsed);
+          }
         }}
-        placeholder={label}
-        className="h-11 w-full rounded-md border border-border bg-muted px-2 text-center text-sm outline-none focus:border-foreground"
+        onBlur={() => {
+          setText(value === null ? "" : String(value));
+        }}
+        placeholder={placeholder == null ? label : String(placeholder)}
+        className="h-11 w-full rounded-md border border-border bg-muted px-2 text-center text-base outline-none placeholder:text-muted-foreground/60 focus:border-foreground sm:text-sm"
       />
     </label>
   );

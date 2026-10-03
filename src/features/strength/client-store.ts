@@ -1,5 +1,6 @@
 import type {
   ExerciseHistoryEntry,
+  ExerciseLibraryEntry,
   ExercisePersonalRecords,
   ExerciseProgressPoint,
   StrengthExerciseEntry,
@@ -295,13 +296,131 @@ export function getPreviousExerciseSession(
   beforeWorkoutId?: string
 ) {
   const history = getExerciseHistory(workouts, exerciseName);
-  const beforeIndex = beforeWorkoutId
+  const currentIndex = beforeWorkoutId
     ? history.findIndex((entry) => entry.workoutId === beforeWorkoutId)
-    : history.length;
+    : -1;
+  // A workout that isn't in history yet (e.g. a new draft) comes after everything in it.
+  const endIndex = currentIndex === -1 ? history.length : currentIndex;
 
-  return history[Math.max(beforeIndex - 1, 0)]?.workoutId === beforeWorkoutId
-    ? undefined
-    : history[Math.max(beforeIndex - 1, 0)];
+  return endIndex > 0 ? history[endIndex - 1] : undefined;
+}
+
+export function buildExerciseLibrary(workouts: StrengthWorkout[]): ExerciseLibraryEntry[] {
+  const entries = new Map<string, ExerciseLibraryEntry>();
+  const chronological = workouts
+    .filter((workout) => !isInProgressWorkout(workout))
+    .sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
+
+  for (const workout of chronological) {
+    for (const exercise of workout.exercises) {
+      const key = normalizeExerciseName(exercise.name);
+
+      if (!key) {
+        continue;
+      }
+
+      const previous = entries.get(key);
+      const isNewSession = previous?.lastWorkoutId !== workout.id;
+
+      entries.set(key, {
+        name: exercise.name.trim(),
+        lastWorkoutId: workout.id,
+        lastDate: workout.date,
+        lastStartTime: workout.startTime,
+        notes: exercise.notes ?? "",
+        sets: exercise.sets.map((set) => ({
+          weight: set.weight,
+          reps: set.reps,
+          rir: set.rir ?? null
+        })),
+        sessionCount: (previous?.sessionCount ?? 0) + (isNewSession ? 1 : 0)
+      });
+    }
+  }
+
+  return [...entries.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function rankExerciseSuggestions(
+  query: string,
+  library: ExerciseLibraryEntry[],
+  limit = 3
+): ExerciseLibraryEntry[] {
+  const normalizedQuery = normalizeExerciseName(query);
+
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  return library
+    .flatMap((entry) => {
+      const tier = getSuggestionTier(normalizeExerciseName(entry.name), normalizedQuery);
+      return tier === null ? [] : [{ entry, tier }];
+    })
+    .sort((a, b) => a.tier - b.tier || a.entry.name.localeCompare(b.entry.name))
+    .slice(0, limit)
+    .map(({ entry }) => entry);
+}
+
+function getSuggestionTier(name: string, query: string) {
+  if (name === query) return 0;
+  if (name.startsWith(query)) return 1;
+  if (name.split(/\s+/).some((word) => word.startsWith(query))) return 2;
+  if (name.includes(query)) return 3;
+  if (query.length < 3) return null;
+
+  // Typo tolerance: min distance to the full name, any word, or a same-length prefix of either.
+  const maxDistance = query.length >= 5 ? 2 : 1;
+  const candidates = [name, ...name.split(/\s+/)].flatMap((text) => [
+    text,
+    text.slice(0, query.length)
+  ]);
+  const distance = Math.min(...candidates.map((text) => levenshtein(text, query)));
+
+  return distance <= maxDistance ? 4 : null;
+}
+
+function levenshtein(a: string, b: string) {
+  let previousRow = Array.from({ length: b.length + 1 }, (_, index) => index);
+
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(
+        (previousRow[j] ?? 0) + 1,
+        (row[j - 1] ?? 0) + 1,
+        (previousRow[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+
+    previousRow = row;
+  }
+
+  return previousRow[b.length] ?? 0;
+}
+
+export function fillSetFromPrevious(
+  set: StrengthSet,
+  previous: StrengthSet | undefined
+): StrengthSet {
+  if (!previous) {
+    return set;
+  }
+
+  return {
+    ...set,
+    weight: set.weight ?? previous.weight,
+    reps: set.reps ?? previous.reps,
+    rir: set.rir ?? previous.rir ?? null
+  };
+}
+
+/** Parses "12", "12.5", "12,5", "12.", ".5" / ",5"; anything else (incl. empty) → null. */
+export function parseDecimalInput(raw: string): number | null {
+  const normalized = raw.trim().replace(",", ".");
+
+  return /^(\d+\.?\d*|\.\d+)$/.test(normalized) ? Number(normalized) : null;
 }
 
 export function getExercisePersonalRecords(

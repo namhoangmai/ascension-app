@@ -1,26 +1,27 @@
-import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 
 import { prisma } from "@/lib/db/prisma";
 import { sendVerificationCodeEmail } from "@/lib/services/email";
+
+import { codeMatchesWithPurpose, hashCodeWithPurpose } from "./code-hash";
 
 export const CODE_TTL_MINUTES = 10;
 export const RESEND_COOLDOWN_SECONDS = 60;
 export const MAX_CODES_PER_HOUR = 5;
 export const MAX_CODE_ATTEMPTS = 5;
 
-function hmacSecret() {
-  return process.env.AUTH_SECRET ?? "development-only-auth-secret-change-before-production";
-}
+/**
+ * Distinguishes this module's codes from other 6-digit code purposes (e.g. password-change) in
+ * the HMAC input, so a value that happens to match numerically cannot be replayed across flows.
+ */
+const PURPOSE = "email-verify";
 
 function hashCode(code: string, salt: string, userId: string) {
-  return createHmac("sha256", hmacSecret()).update(`${salt}:${userId}:${code}`).digest("hex");
+  return hashCodeWithPurpose(code, salt, userId, PURPOSE);
 }
 
 export function codeMatches(code: string, salt: string, userId: string, expectedHash: string) {
-  const actual = Buffer.from(hashCode(code, salt, userId), "hex");
-  const expected = Buffer.from(expectedHash, "hex");
-
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+  return codeMatchesWithPurpose(code, salt, userId, PURPOSE, expectedHash);
 }
 
 export type IssueResult = "sent" | "cooldown" | "capped" | "send_failed";

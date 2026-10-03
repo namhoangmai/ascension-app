@@ -1,0 +1,12 @@
+-- Case-insensitive uniqueness backstop for UserProfile.username.
+--
+-- The Prisma-level `@unique` on `username` stays as-is (still gives Prisma's own P2002 error
+-- path for exact-case collisions). This adds a DB-level index so "Bob" and "bob" cannot both
+-- exist, matching the application-level case-insensitive check added in
+-- `src/features/profile/server.ts` (`updateAccountDetails`, `saveProfileAction`) and
+-- `src/lib/auth/identifier.ts`'s sign-in-by-username lookup.
+--
+-- Verified against the dev database before creating this migration: no existing rows collide
+-- case-insensitively (`SELECT lower(username) FROM "UserProfile" WHERE username IS NOT NULL
+-- GROUP BY lower(username) HAVING count(*) > 1;` returned zero rows).
+CREATE UNIQUE INDEX "UserProfile_username_lower_key" ON "UserProfile" (lower(username)) WHERE username IS NOT NULL;

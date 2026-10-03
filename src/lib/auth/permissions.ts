@@ -10,7 +10,6 @@ export const protectedRoutes = [
   "/nutrition",
   "/body",
   "/analytics",
-  "/settings",
   "/profile"
 ] as const;
 

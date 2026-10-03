@@ -1,6 +1,7 @@
 import { hash, verify } from "argon2";
 import { AuthError } from "next-auth";
 import type { Session } from "next-auth";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { randomBytes, createHash } from "node:crypto";
@@ -8,14 +9,20 @@ import { randomBytes, createHash } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 
 import { issueVerificationCode, codeMatches, MAX_CODE_ATTEMPTS } from "./email-verification";
+import {
+  issuePasswordChangeCode,
+  passwordChangeCodeMatches,
+  MAX_CODE_ATTEMPTS as MAX_PASSWORD_CHANGE_CODE_ATTEMPTS
+} from "./password-change-code";
 import { sendPasswordResetEmail } from "@/lib/services/email";
 
-import { auth, signIn, signOut } from "./auth";
+import { auth, signIn, signOut, updateSession } from "./auth";
 import { findUserByIdentifier } from "./identifier";
 import { assertRateLimit, clearRateLimit, getRateLimitKey, RateLimitError } from "./rate-limit";
 import { toSessionUser, type SessionUser } from "./session";
 import {
   changePasswordSchema,
+  changePasswordWithCodeSchema,
   forgotPasswordSchema,
   resendVerificationSchema,
   resetPasswordSchema,
@@ -84,16 +91,73 @@ function verifyStep(
   };
 }
 
+/** `auth`'s `(req, res)` overload, which is typed for Pages Router objects but only reads `headers`. */
+type AuthFromHeaders = (
+  req: { headers: Headers },
+  res: { headers: Headers }
+) => Promise<Session | null>;
+
+/**
+ * Reads the session from the *freshest* cookie, not the incoming Cookie header.
+ *
+ * `auth()` reads `headers().get("cookie")`, i.e. what the browser sent. A Server Action that
+ * rotates the session cookie (`refreshPasswordSession`) makes Next.js re-render the current page
+ * in the same request; `cookies()` sees the rotated cookie there (Next syncs it), but `headers()`
+ * still holds the OLD one (a TODO in Next's `synchronizeMutableCookies`). Reading the old JWT
+ * failed the `passwordUpdatedAt` check below and bounced the device that just changed its
+ * password to /sign-in. Feeding `cookies()` to `auth()` fixes that without loosening the check.
+ */
+async function readSession(): Promise<Session | null> {
+  const requestHeaders = new Headers(await headers());
+  const cookieStore = await cookies();
+
+  requestHeaders.set(
+    "cookie",
+    cookieStore
+      .getAll()
+      .map(({ name, value }) => `${name}=${encodeURIComponent(value)}`)
+      .join("; ")
+  );
+
+  // The (discarded) response headers only receive Set-Cookie refreshes, which a render can't send.
+  return (auth as unknown as AuthFromHeaders)(
+    { headers: requestHeaders },
+    { headers: new Headers() }
+  );
+}
+
 export async function getCurrentUser(): Promise<SessionUser | null> {
   let session: Session | null;
 
   try {
-    session = await auth();
+    session = await readSession();
   } catch {
     return null;
   }
 
   if (!session?.user.id) {
+    return null;
+  }
+
+  // Staleness check: a password change stamps a fresh `passwordUpdatedAt` on the User row. Any
+  // JWT minted before that (i.e. every device except the one that made the change, which gets
+  // its token refreshed via `updateSession()` right after the change) will not match and is
+  // treated as signed out. This is the actual "sign out other devices" mechanism — the
+  // `prisma.session.deleteMany` calls elsewhere in this file are no-ops under JWT sessions.
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { passwordUpdatedAt: true }
+  });
+
+  if (!dbUser) {
+    return null;
+  }
+
+  const dbPasswordUpdatedAt = dbUser.passwordUpdatedAt
+    ? dbUser.passwordUpdatedAt.toISOString()
+    : null;
+
+  if (dbPasswordUpdatedAt !== session.user.passwordUpdatedAt) {
     return null;
   }
 
@@ -427,6 +491,11 @@ export async function resetPassword(
     await tx.session.deleteMany({
       where: { userId: resetToken.userId }
     });
+    // The password just changed: an emailed password-change code issued before it must not outlive it.
+    await tx.passwordChangeCode.updateMany({
+      where: { userId: resetToken.userId, usedAt: null },
+      data: { usedAt: new Date() }
+    });
 
     return true;
   });
@@ -442,6 +511,16 @@ export async function resetPassword(
     status: "success",
     message: "Password updated. You can sign in now."
   };
+}
+
+/**
+ * Refreshes the *current request's* session cookie right after a password change, so the device
+ * that made the change is not also logged out by the `passwordUpdatedAt` staleness check in
+ * `getCurrentUser()`. Every other device's JWT still predates the DB value and fails that check
+ * on its next request — that is the actual "sign out other devices" mechanism now.
+ */
+async function refreshPasswordSession(passwordUpdatedAt: Date) {
+  await updateSession({ user: { passwordUpdatedAt: passwordUpdatedAt.toISOString() } });
 }
 
 export async function changePassword(
@@ -479,23 +558,204 @@ export async function changePassword(
     select: { passwordHash: true }
   });
 
+  // Setting a *first* password (no existing hash, e.g. a Google-only account) must go through
+  // `changePasswordWithCode` instead — proving control of the mailbox, since there is no current
+  // password to check here.
+  if (!dbUser?.passwordHash) {
+    return {
+      status: "error",
+      message: 'Use "Email me a code" to set your first password.'
+    };
+  }
+
+  if (!parsed.data.currentPassword) {
+    return validationError(
+      { currentPassword: ["Enter your current password."] },
+      "Check the form and try again."
+    );
+  }
+
+  const isCurrentPasswordValid = await verify(dbUser.passwordHash, parsed.data.currentPassword);
+
+  if (!isCurrentPasswordValid) {
+    return validationError(
+      { currentPassword: ["Current password is incorrect."] },
+      "Check the form and try again."
+    );
+  }
+
+  const samePassword = await verify(dbUser.passwordHash, parsed.data.newPassword);
+
+  if (samePassword) {
+    return {
+      status: "error",
+      message: "Choose a password you have not used recently."
+    };
+  }
+
+  const passwordHash = await hash(parsed.data.newPassword, {
+    type: 2,
+    memoryCost: 19456,
+    timeCost: 2,
+    parallelism: 1
+  });
+
+  const passwordUpdatedAt = new Date();
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, passwordUpdatedAt }
+  });
+  await prisma.session.deleteMany({ where: { userId: user.id } });
+  // The password just changed: an emailed password-change code issued before it must not outlive it.
+  await prisma.passwordChangeCode.updateMany({
+    where: { userId: user.id, usedAt: null },
+    data: { usedAt: new Date() }
+  });
+  await refreshPasswordSession(passwordUpdatedAt);
+
+  return {
+    status: "success",
+    message: "Password updated."
+  };
+}
+
+const genericPasswordChangeCodeError = {
+  status: "error",
+  message: "That code is invalid or has expired."
+} satisfies AuthActionState;
+
+export async function requestPasswordChangeCode(): Promise<AuthActionState> {
+  const user = await requireUser();
+
+  try {
+    assertRateLimit({
+      key: getRateLimitKey("password-change-code", user.id),
+      limit: 5,
+      windowMs: 60 * 60 * 1000
+    });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return rateLimitedState;
+    }
+
+    throw error;
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { email: true }
+  });
+
+  if (!dbUser) {
+    return {
+      status: "error",
+      message: "Unable to send a code right now. Try again in a moment."
+    };
+  }
+
+  // Always the signed-in user's own current email — never a value from the form, so this cannot
+  // be used to email a code to an address the user doesn't control.
+  const result = await issuePasswordChangeCode({ id: user.id, email: dbUser.email });
+
+  if (result === "send_failed") {
+    return {
+      status: "error",
+      message: "We could not send the code. Please try again in a minute."
+    };
+  }
+
+  if (result === "cooldown") {
+    return {
+      status: "error",
+      message: "Please wait before requesting another code.",
+      email: dbUser.email,
+      cooldownSeconds: RESEND_COOLDOWN_SECONDS
+    };
+  }
+
+  if (result === "capped") {
+    return {
+      status: "error",
+      message: "Too many codes requested. Please wait before trying again.",
+      email: dbUser.email
+    };
+  }
+
+  return {
+    status: "success",
+    message: "We sent a 6-digit code to your email.",
+    email: dbUser.email,
+    cooldownSeconds: RESEND_COOLDOWN_SECONDS
+  };
+}
+
+export async function changePasswordWithCode(
+  _previousState: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  const user = await requireUser();
+
+  try {
+    assertRateLimit({
+      key: getRateLimitKey("change-password-with-code", user.id),
+      limit: 5,
+      windowMs: 15 * 60 * 1000
+    });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return rateLimitedState;
+    }
+
+    throw error;
+  }
+
+  const parsed = changePasswordWithCodeSchema.safeParse({
+    code: formValue(formData, "code"),
+    newPassword: formValue(formData, "newPassword"),
+    confirmNewPassword: formValue(formData, "confirmNewPassword")
+  });
+
+  if (!parsed.success) {
+    return validationError(parsed.error.flatten().fieldErrors);
+  }
+
+  const record = await prisma.passwordChangeCode.findFirst({
+    where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (!record) {
+    return genericPasswordChangeCodeError;
+  }
+
+  // Count the attempt atomically before comparing, so parallel guesses cannot exceed the cap.
+  const counted = await prisma.passwordChangeCode.updateMany({
+    where: { id: record.id, usedAt: null, attempts: { lt: MAX_PASSWORD_CHANGE_CODE_ATTEMPTS } },
+    data: { attempts: { increment: 1 } }
+  });
+
+  if (counted.count !== 1) {
+    return genericPasswordChangeCodeError;
+  }
+
+  if (!passwordChangeCodeMatches(parsed.data.code, record.salt, user.id, record.codeHash)) {
+    if (record.attempts + 1 >= MAX_PASSWORD_CHANGE_CODE_ATTEMPTS) {
+      await prisma.passwordChangeCode.updateMany({
+        where: { id: record.id, usedAt: null },
+        data: { usedAt: new Date() }
+      });
+    }
+
+    return genericPasswordChangeCodeError;
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { passwordHash: true }
+  });
+
   if (dbUser?.passwordHash) {
-    if (!parsed.data.currentPassword) {
-      return validationError(
-        { currentPassword: ["Enter your current password."] },
-        "Check the form and try again."
-      );
-    }
-
-    const isCurrentPasswordValid = await verify(dbUser.passwordHash, parsed.data.currentPassword);
-
-    if (!isCurrentPasswordValid) {
-      return validationError(
-        { currentPassword: ["Current password is incorrect."] },
-        "Check the form and try again."
-      );
-    }
-
     const samePassword = await verify(dbUser.passwordHash, parsed.data.newPassword);
 
     if (samePassword) {
@@ -512,18 +772,69 @@ export async function changePassword(
     timeCost: 2,
     parallelism: 1
   });
+  const passwordUpdatedAt = new Date();
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { passwordHash, passwordUpdatedAt: new Date() }
+  // Consume the code atomically so two concurrent requests cannot both redeem it.
+  const changed = await prisma.$transaction(async (tx) => {
+    const consumed = await tx.passwordChangeCode.updateMany({
+      where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() }
+    });
+
+    if (consumed.count !== 1) {
+      return false;
+    }
+
+    await tx.user.update({
+      where: { id: user.id },
+      data: { passwordHash, passwordUpdatedAt }
+    });
+    // The password just changed: no other outstanding code may outlive it.
+    await tx.passwordChangeCode.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() }
+    });
+
+    return true;
   });
+
+  if (!changed) {
+    return genericPasswordChangeCodeError;
+  }
+
   await prisma.session.deleteMany({ where: { userId: user.id } });
+  await refreshPasswordSession(passwordUpdatedAt);
 
   return {
     status: "success",
     message: dbUser?.passwordHash
       ? "Password updated."
       : "Password set. You can now sign in with your username or email and this password."
+  };
+}
+
+export async function getAccountDetails(): Promise<{
+  email: string;
+  username: string | null;
+  dateOfBirth: string | null;
+}> {
+  const user = await requireUser();
+
+  const [dbUser, profile] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: user.id },
+      select: { email: true }
+    }),
+    prisma.userProfile.findUnique({
+      where: { userId: user.id },
+      select: { username: true, dateOfBirth: true }
+    })
+  ]);
+
+  return {
+    email: dbUser?.email ?? user.email,
+    username: profile?.username ?? null,
+    dateOfBirth: profile?.dateOfBirth ? profile.dateOfBirth.toISOString() : null
   };
 }
 

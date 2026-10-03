@@ -87,6 +87,19 @@ export async function sendVerificationCodeEmail(to: string, code: string, ttlMin
   return deliver({ to, subject, html, text, devLog: `verification code: ${code}` });
 }
 
+export async function sendPasswordChangeCodeEmail(to: string, code: string, ttlMinutes: number) {
+  const subject = "Your Ascension password-change code";
+  const text = `Your Ascension password-change code is ${code}.\n\nThis code changes your account password — it is not for email verification. It expires in ${String(ttlMinutes)} minutes. Never share this code with anyone.\n\nIf you did not request this, you can ignore this email.`;
+  const html = layout(
+    "Change your password",
+    `<p style="font-size:15px;line-height:1.5;margin:0 0 16px;">Enter this code to change your account password. This code changes your password — it is not for email verification.</p>
+<p style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:0 0 16px;padding:12px 16px;background:#f2f2f2;color:#111111;text-align:center;font-family:'Courier New',monospace;">${escapeHtml(code)}</p>
+<p style="font-size:14px;line-height:1.5;margin:0;color:#333333;">It expires in ${String(ttlMinutes)} minutes. Never share this code with anyone.</p>`
+  );
+
+  return deliver({ to, subject, html, text, devLog: `password-change code: ${code}` });
+}
+
 export async function sendPasswordResetEmail(to: string, resetUrl: string, ttlMinutes: number) {
   const subject = "Reset your Ascension password";
   const text = `Use this link to reset your Ascension password:\n\n${resetUrl}\n\nIt expires in ${String(ttlMinutes)} minutes and can be used once.\n\nIf you did not request this, you can ignore this email.`;

@@ -150,6 +150,27 @@ describe("reset password", () => {
     expect(db.session.rows).toHaveLength(0);
   });
 
+  it("kills an outstanding emailed password-change code (it must not outlive the password change)", async () => {
+    const { user, token } = await requestToken();
+    const other = await seedUser();
+    const outstanding = (userId: unknown) =>
+      db.passwordChangeCode.create({
+        data: { userId, salt: "s", codeHash: "h", expiresAt: new Date(Date.now() + 10 * MINUTE) }
+      });
+    await outstanding(user.id);
+    await outstanding(other.id);
+
+    expect((await reset(token)).status).toBe("success");
+
+    const usedAtFor = (userId: unknown) =>
+      db.passwordChangeCode.rows.find((c) => c.userId === userId)?.usedAt as
+        | Date
+        | null
+        | undefined;
+    expect(usedAtFor(user.id)).not.toBeNull();
+    expect(usedAtFor(other.id)).toBeNull();
+  });
+
   it("tokens are single-use", async () => {
     const { token } = await requestToken();
 

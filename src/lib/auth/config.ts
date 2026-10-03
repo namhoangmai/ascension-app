@@ -1,5 +1,6 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { NextAuthConfig } from "next-auth";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { prisma } from "@/lib/db/prisma";
 import { sendWelcomeEmail } from "@/lib/services/email";
@@ -18,6 +19,38 @@ function requireProductionSecret(name: string) {
 
 const authSecret =
   requireProductionSecret("AUTH_SECRET") ?? "development-only-auth-secret-change-before-production";
+
+/**
+ * `POST /api/auth/session` is a public Auth.js endpoint (exported through `handlers`) whose request
+ * body reaches the `jwt` callback below as `trigger: "update"`. Trusting that data would let any
+ * session holder — including one whose token a password change just revoked — write its own
+ * `passwordUpdatedAt` and un-revoke itself. Only `updateSession()` (auth.ts) can sign the value,
+ * so the callback accepts nothing that lacks this proof.
+ */
+export function passwordRefreshProof(passwordUpdatedAt: string | null) {
+  return createHmac("sha256", authSecret)
+    .update(`password-session-refresh:${passwordUpdatedAt ?? ""}`)
+    .digest("hex");
+}
+
+function isValidPasswordRefreshProof(passwordUpdatedAt: string | null, proof: string) {
+  const actual = Buffer.from(proof, "hex");
+  const expected = Buffer.from(passwordRefreshProof(passwordUpdatedAt), "hex");
+
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+/**
+ * The token stores `passwordUpdatedAt` as an ISO string. Credentials sign-in already provides one,
+ * but OAuth sign-in hands the callback the Prisma adapter's `User` row, where it is a `Date`.
+ */
+function toIsoStringOrNull(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return value instanceof Date && !Number.isNaN(value.getTime()) ? value.toISOString() : null;
+}
 
 export const authConfig = {
   adapter: PrismaAdapter(prisma),
@@ -82,12 +115,31 @@ export const authConfig = {
 
       return true;
     },
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session }) {
       const maybeUser = user as { passwordUpdatedAt?: unknown } | undefined;
 
       if (maybeUser && "passwordUpdatedAt" in maybeUser) {
-        token.passwordUpdatedAt =
-          typeof maybeUser.passwordUpdatedAt === "string" ? maybeUser.passwordUpdatedAt : null;
+        token.passwordUpdatedAt = toIsoStringOrNull(maybeUser.passwordUpdatedAt);
+      }
+
+      // Triggered server-side by `updateSession()` (see `src/lib/auth/auth.ts`) right after a
+      // password change, so the device that just changed its own password is not also logged
+      // out by the `passwordUpdatedAt` staleness check in `getCurrentUser()`. Requires the
+      // server-only proof (see `passwordRefreshProof`): this data is otherwise client-controlled.
+      if (trigger === "update" && session && typeof session === "object") {
+        const maybeSession = session as {
+          user?: { passwordUpdatedAt?: unknown };
+          proof?: unknown;
+        };
+        const nextValue = maybeSession.user?.passwordUpdatedAt;
+
+        if (
+          (typeof nextValue === "string" || nextValue === null) &&
+          typeof maybeSession.proof === "string" &&
+          isValidPasswordRefreshProof(nextValue, maybeSession.proof)
+        ) {
+          token.passwordUpdatedAt = nextValue;
+        }
       }
 
       return token;

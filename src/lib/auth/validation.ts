@@ -72,6 +72,20 @@ export const changePasswordSchema = z
     path: ["confirmNewPassword"]
   });
 
+export const changePasswordWithCodeSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, "Enter the 6-digit code."),
+    newPassword: passwordPolicySchema,
+    confirmNewPassword: z.string()
+  })
+  .refine((data) => data.newPassword === data.confirmNewPassword, {
+    message: "Passwords do not match.",
+    path: ["confirmNewPassword"]
+  });
+
 export type SignInInput = z.infer<typeof signInSchema>;
 export type SignUpInput = z.infer<typeof signUpSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
@@ -79,3 +93,4 @@ export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ChangePasswordWithCodeInput = z.infer<typeof changePasswordWithCodeSchema>;

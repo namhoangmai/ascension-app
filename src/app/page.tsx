@@ -1,26 +1,28 @@
 import type { Route } from "next";
 
 import { LandingPageView } from "@/app/_components/landing-page-view";
-import { auth } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/server";
 
 export default async function HomePage() {
-  const session = await auth();
-  const primaryHref = (session ? "/dashboard" : "/sign-up") as Route;
-  const secondaryHref = (session ? "/dashboard" : "/sign-in") as Route;
+  // The marketing page must never 500: getCurrentUser() hits the DB for signed-in users and
+  // fails closed by throwing, so fall back to the signed-out view.
+  const user = await getCurrentUser().catch(() => null);
+  const primaryHref = (user ? "/dashboard" : "/sign-up") as Route;
+  const secondaryHref = (user ? "/dashboard" : "/sign-in") as Route;
 
   return (
     <LandingPageView
       primaryHref={primaryHref}
-      primaryLabel={session ? "Open dashboard" : "Start tracking"}
+      primaryLabel={user ? "Open dashboard" : "Start tracking"}
       secondaryHref={secondaryHref}
-      secondaryLabel={session ? "Review today" : "Sign in"}
-      navActionLabel={session ? "Dashboard" : "Sign up"}
+      secondaryLabel={user ? "Review today" : "Sign in"}
+      navActionLabel={user ? "Dashboard" : "Sign up"}
       navProfile={
-        session
+        user
           ? {
-              name: session.user.name,
-              email: session.user.email,
-              image: session.user.image
+              name: user.name,
+              email: user.email,
+              image: user.image
             }
           : undefined
       }

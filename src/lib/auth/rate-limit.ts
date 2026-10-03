@@ -26,8 +26,11 @@ export function getRateLimitKey(scope: string, identifier: string): RateLimitKey
 
 const MAX_BUCKETS = 10_000;
 
-// Keeps memory bounded (keys include user-supplied emails). In-memory and per-process:
-// valid for Render's single instance only; resets on restart/deploy.
+// Keeps memory bounded (keys include user-supplied emails). In-memory and per-process, so it is
+// NOT a real global limit on Vercel: every serverless instance has its own buckets, concurrent
+// invocations do not share them, and they reset on cold start/deploy. Treat it as best-effort
+// friction only; anything that must hold (code attempts, code issuance, feedback) is DB-backed.
+// A shared store (e.g. Redis/Upstash) is needed for a real fix.
 function pruneBuckets(now: number) {
   if (buckets.size < MAX_BUCKETS) {
     return;

@@ -70,7 +70,7 @@ export function AppShell({ children, profile }: AppShellProps) {
           aria-label="Primary"
           className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/75 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur-xl backdrop-saturate-150 md:hidden"
         >
-          <div className="mx-auto grid max-w-lg grid-cols-8">
+          <div className="mx-auto grid max-w-lg grid-cols-7">
             {primaryNavigation.map((item) => (
               <Link
                 key={item.href}

@@ -174,8 +174,10 @@
   }
 
   /* Motion: reveal */
+  /* `backwards`, not `both`: a persisting opacity fill keeps a stacking context on wrappers
+     like app-shell's <main>, trapping fixed z-50 overlays beneath the z-40 mobile nav. */
   .animate-fade-in {
-    animation: fade-in var(--dur-long) var(--ease-apple) both;
+    animation: fade-in var(--dur-long) var(--ease-apple) backwards;
   }
 
   .animate-rise-in {

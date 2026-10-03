@@ -25,3 +25,10 @@ ARCHITECTURE.md
 CLAUDE.md 
 PRD.md
 WORKSTREAMS.md
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

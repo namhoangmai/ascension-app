@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 
 import { sendWelcomeEmail } from "@/lib/services/email";
 
-import { authConfig } from "./config";
+import { authConfig, passwordRefreshProof } from "./config";
 import type { FakeDb } from "./fake-db.test.helpers";
 import { getAuthProviders } from "./providers";
 
@@ -314,6 +314,20 @@ describe("session/jwt callbacks", () => {
     expect(jwt({ token: {}, user: { passwordUpdatedAt: 5 } })).toEqual({ passwordUpdatedAt: null });
   });
 
+  it("normalizes a Date passwordUpdatedAt (OAuth adapter user) to the ISO string the DB comparison uses", () => {
+    const stamp = new Date("2026-03-01T09:30:00.123Z");
+
+    expect(jwt({ token: {}, user: { passwordUpdatedAt: stamp } })).toEqual({
+      passwordUpdatedAt: "2026-03-01T09:30:00.123Z"
+    });
+    expect(jwt({ token: {}, user: { passwordUpdatedAt: null } })).toEqual({
+      passwordUpdatedAt: null
+    });
+    expect(jwt({ token: {}, user: { passwordUpdatedAt: new Date("nope") } })).toEqual({
+      passwordUpdatedAt: null
+    });
+  });
+
   it("exposes id, email and passwordUpdatedAt on the session", () => {
     const result = session({
       session: { user: {} },
@@ -330,5 +344,63 @@ describe("session/jwt callbacks", () => {
 
     expect(authorized({ auth: null })).toBe(false);
     expect(authorized({ auth: { user: {} } })).toBe(true);
+  });
+});
+
+describe("jwt callback: trigger 'update' (session refresh after a password change)", () => {
+  const jwt = authConfig.callbacks.jwt as unknown as (p: {
+    token: Record<string, unknown>;
+    trigger?: string;
+    session?: unknown;
+  }) => Record<string, unknown>;
+  const OLD = "2026-01-01T00:00:00.000Z";
+  const NEW = "2026-03-01T00:00:00.000Z";
+
+  it("accepts an update carrying the server-side proof (what updateSession() sends)", () => {
+    const token = jwt({
+      token: { passwordUpdatedAt: OLD },
+      trigger: "update",
+      session: { user: { passwordUpdatedAt: NEW }, proof: passwordRefreshProof(NEW) }
+    });
+
+    expect(token.passwordUpdatedAt).toBe(NEW);
+  });
+
+  it("accepts a proven null (never-had-a-password stamp)", () => {
+    const token = jwt({
+      token: { passwordUpdatedAt: OLD },
+      trigger: "update",
+      session: { user: { passwordUpdatedAt: null }, proof: passwordRefreshProof(null) }
+    });
+
+    expect(token.passwordUpdatedAt).toBeNull();
+  });
+
+  // POST /api/auth/session is public: a holder of a token revoked by a password change could
+  // otherwise write the DB's current stamp into it and un-revoke itself.
+  it.each([
+    ["no proof at all", { user: { passwordUpdatedAt: NEW } }],
+    [
+      "a proof for a different value",
+      { user: { passwordUpdatedAt: NEW }, proof: passwordRefreshProof(OLD) }
+    ],
+    ["a garbage proof", { user: { passwordUpdatedAt: NEW }, proof: "not-hex" }],
+    ["an empty proof", { user: { passwordUpdatedAt: NEW }, proof: "" }],
+    ["a non-string proof", { user: { passwordUpdatedAt: NEW }, proof: 1 }],
+    ["a forged null", { user: { passwordUpdatedAt: null } }],
+    ["the old top-level shape", { passwordUpdatedAt: NEW, proof: passwordRefreshProof(NEW) }]
+  ])("ignores an update with %s", (_label, session) => {
+    const token = jwt({ token: { passwordUpdatedAt: OLD }, trigger: "update", session });
+
+    expect(token.passwordUpdatedAt).toBe(OLD);
+  });
+
+  it("ignores a proven payload when the trigger is not 'update'", () => {
+    const token = jwt({
+      token: { passwordUpdatedAt: OLD },
+      session: { user: { passwordUpdatedAt: NEW }, proof: passwordRefreshProof(NEW) }
+    });
+
+    expect(token.passwordUpdatedAt).toBe(OLD);
   });
 });
