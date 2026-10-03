@@ -13,6 +13,19 @@ import type {
 export const STRENGTH_WORKOUTS_STORAGE_KEY = "strength.workouts.v1";
 export const STRENGTH_TEMPLATES_STORAGE_KEY = "strength.templates.v1";
 export const STRENGTH_DRAFT_STORAGE_KEY = "strength.activeDraft.v1";
+export const STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY = "strength.exerciseDefaults.v1";
+
+/** Browser-only per-exercise overrides layered on top of the library; never written to session history. */
+export interface ExerciseDefault {
+  notes: string;
+  weights: (number | null)[];
+  updatedAt: number;
+}
+
+/** Keyed by `normalizeExerciseName(name)`. */
+export type ExerciseDefaults = Record<string, ExerciseDefault>;
+
+export type ExerciseLibraryEntryWithDefaults = ExerciseLibraryEntry & { hasDefaults: boolean };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -151,7 +164,36 @@ export function isStrengthWorkout(value: unknown): value is StrengthWorkout {
     typeof workout.id === "string" &&
     typeof workout.date === "string" &&
     typeof workout.startTime === "string" &&
-    Array.isArray(workout.exercises)
+    Array.isArray(workout.exercises) &&
+    workout.exercises.every(hasValidWarmup)
+  );
+}
+
+/** `warmup` is optional; when present it must be a string. */
+function hasValidWarmup(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const { warmup } = value as Partial<StrengthExerciseEntry>;
+
+  return warmup === undefined || typeof warmup === "string";
+}
+
+export function isExerciseDefault(value: unknown): value is ExerciseDefault {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const exerciseDefault = value as Partial<ExerciseDefault>;
+
+  return (
+    typeof exerciseDefault.notes === "string" &&
+    typeof exerciseDefault.updatedAt === "number" &&
+    Array.isArray(exerciseDefault.weights) &&
+    exerciseDefault.weights.every(
+      (weight) => weight === null || (typeof weight === "number" && Number.isFinite(weight))
+    )
   );
 }
 
@@ -234,6 +276,35 @@ export function loadStrengthTemplates() {
 
 export function saveStrengthTemplates(templates: StrengthTemplate[]) {
   localStorage.setItem(STRENGTH_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+}
+
+export function loadExerciseDefaults(): ExerciseDefaults {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = localStorage.getItem(STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => isExerciseDefault(value))
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function saveExerciseDefaults(defaults: ExerciseDefaults) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  localStorage.setItem(STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY, JSON.stringify(defaults));
 }
 
 export function formatWorkoutDate(dateKey: string, includeYear = false) {
@@ -341,11 +412,41 @@ export function buildExerciseLibrary(workouts: StrengthWorkout[]): ExerciseLibra
   return [...entries.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function rankExerciseSuggestions(
-  query: string,
+/** Overlays saved defaults: `notes` replaces, `weights[i]` replaces `sets[i].weight`, extra weights append sets. */
+export function applyExerciseDefaults(
   library: ExerciseLibraryEntry[],
+  defaults: ExerciseDefaults
+): ExerciseLibraryEntryWithDefaults[] {
+  return library.map((entry) => {
+    const key = normalizeExerciseName(entry.name);
+    // Own-key check: names like "constructor" would otherwise hit Object.prototype.
+    const exerciseDefault = Object.hasOwn(defaults, key) ? defaults[key] : undefined;
+
+    if (!exerciseDefault) {
+      return { ...entry, hasDefaults: false };
+    }
+
+    const { weights } = exerciseDefault;
+    const setCount = Math.max(entry.sets.length, weights.length);
+
+    return {
+      ...entry,
+      notes: exerciseDefault.notes,
+      sets: Array.from({ length: setCount }, (_, index) => {
+        const set = entry.sets[index] ?? { weight: null, reps: null, rir: null };
+        const weight = weights[index];
+        return weight === undefined ? set : { ...set, weight };
+      }),
+      hasDefaults: true
+    };
+  });
+}
+
+export function rankExerciseSuggestions<T extends ExerciseLibraryEntry>(
+  query: string,
+  library: T[],
   limit = 3
-): ExerciseLibraryEntry[] {
+): T[] {
   const normalizedQuery = normalizeExerciseName(query);
 
   if (!normalizedQuery) {

@@ -105,6 +105,7 @@ function toStrengthWorkout(session: {
     id: string;
     exerciseNameSnapshot: string;
     note: string | null;
+    warmupNote: string | null;
     restSeconds: number | null;
     supersetGroupId: string | null;
     orderIndex: number;
@@ -137,6 +138,7 @@ function toStrengthWorkout(session: {
           id: exercise.id,
           name: exercise.exerciseNameSnapshot,
           notes: exercise.note ?? "",
+          warmup: exercise.warmupNote ?? "",
           sets: exercise.sets
             .slice()
             .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -300,6 +302,7 @@ export async function saveStrengthWorkout(
             categorySnapshot: savedExercise.category,
             orderIndex: exerciseIndex,
             note: nullableTrimmed(exercise.notes),
+            warmupNote: nullableTrimmed(exercise.warmup),
             restSeconds: exercise.sets.find((set) => set.restSeconds)?.restSeconds ?? null,
             supersetGroupId: exercise.supersetGroupId ?? null
           }

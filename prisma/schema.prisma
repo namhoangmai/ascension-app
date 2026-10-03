@@ -512,6 +512,7 @@ model SessionExercise {
   categorySnapshot     ExerciseCategory
   orderIndex           Int
   note                 String?
+  warmupNote           String?
   restSeconds          Int?
   supersetGroupId      String?
   createdAt            DateTime         @default(now())

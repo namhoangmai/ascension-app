@@ -22,6 +22,7 @@ const strengthExerciseSchema = z.object({
   id: z.string().trim().min(1).max(128),
   name: z.string().max(200),
   notes: z.string().max(5_000).optional(),
+  warmup: z.string().max(2_000).optional(),
   sets: z.array(strengthSetSchema).max(200),
   supersetGroupId: z.string().max(128).optional(),
   muscleGroup: z.string().max(100).optional()

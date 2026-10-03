@@ -13,6 +13,7 @@ export interface StrengthExerciseEntry {
   id: string;
   name: string;
   notes?: string;
+  warmup?: string;
   sets: StrengthSet[];
   supersetGroupId?: string;
   muscleGroup?: string;

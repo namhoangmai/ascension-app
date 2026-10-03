@@ -34,6 +34,7 @@ import { ExerciseLibrary } from "@/components/strength/exercise-library";
 import { Button } from "@/components/ui/button";
 import {
   STRENGTH_DRAFT_STORAGE_KEY,
+  applyExerciseDefaults,
   buildExerciseLibrary,
   clearStrengthDraft,
   createEmptySet,
@@ -52,13 +53,19 @@ import {
   getWorkoutDuration,
   getWorkoutTotals,
   isInProgressWorkout,
+  loadExerciseDefaults,
   loadStrengthDraft,
   loadStrengthTemplates,
   loadStrengthWorkouts,
+  normalizeExerciseName,
   parseDecimalInput,
   rankExerciseSuggestions,
+  saveExerciseDefaults,
   saveStrengthTemplates,
-  slugifyExerciseName
+  slugifyExerciseName,
+  type ExerciseDefault,
+  type ExerciseDefaults,
+  type ExerciseLibraryEntryWithDefaults
 } from "@/features/strength/client-store";
 import {
   cancelInProgressStrengthWorkoutAction,
@@ -68,7 +75,6 @@ import {
 import { cn } from "@/lib/utils";
 import type {
   ExerciseHistoryEntry,
-  ExerciseLibraryEntry,
   StrengthExerciseEntry,
   StrengthRange,
   StrengthSet,
@@ -107,6 +113,7 @@ export function StrengthTrackingClient({
   const [activeTab, setActiveTab] = useState<TabKey>("history");
   const [workouts, setWorkouts] = useState<StrengthWorkout[]>(initialWorkouts);
   const [templates, setTemplates] = useState<StrengthTemplate[]>([]);
+  const [exerciseDefaults, setExerciseDefaults] = useState<ExerciseDefaults>({});
   const [draft, setDraft] = useState<StrengthWorkout | null>(null);
   const [recoverableDraft, setRecoverableDraft] = useState<StrengthWorkout | null>(null);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
@@ -122,6 +129,7 @@ export function StrengthTrackingClient({
 
   useEffect(() => {
     setTemplates(loadStrengthTemplates());
+    setExerciseDefaults(loadExerciseDefaults());
 
     const localDraft = loadStrengthDraft();
     if (!localDraft) {
@@ -171,7 +179,10 @@ export function StrengthTrackingClient({
     [workouts]
   );
   const inProgressWorkout = workouts.find(isInProgressWorkout);
-  const exerciseLibrary = useMemo(() => buildExerciseLibrary(workouts), [workouts]);
+  const exerciseLibrary = useMemo(
+    () => applyExerciseDefaults(buildExerciseLibrary(workouts), exerciseDefaults),
+    [workouts, exerciseDefaults]
+  );
 
   const sortedWorkouts = useMemo(
     () =>
@@ -186,6 +197,25 @@ export function StrengthTrackingClient({
   function persistTemplates(nextTemplates: StrengthTemplate[]) {
     setTemplates(nextTemplates);
     saveStrengthTemplates(nextTemplates);
+  }
+
+  function persistExerciseDefaults(nextDefaults: ExerciseDefaults) {
+    setExerciseDefaults(nextDefaults);
+    saveExerciseDefaults(nextDefaults);
+  }
+
+  function saveExerciseDefault(name: string, value: Omit<ExerciseDefault, "updatedAt">) {
+    persistExerciseDefaults({
+      ...exerciseDefaults,
+      [normalizeExerciseName(name)]: { ...value, updatedAt: Date.now() }
+    });
+  }
+
+  function resetExerciseDefault(name: string) {
+    const key = normalizeExerciseName(name);
+    persistExerciseDefaults(
+      Object.fromEntries(Object.entries(exerciseDefaults).filter(([entryKey]) => entryKey !== key))
+    );
   }
 
   function buildPayload(intent: "continue" | "end"): StrengthWorkout | null {
@@ -446,7 +476,11 @@ export function StrengthTrackingClient({
             />
           </>
         ) : activeTab === "exercises" ? (
-          <ExerciseLibrary library={exerciseLibrary} />
+          <ExerciseLibrary
+            library={exerciseLibrary}
+            onSaveDefaults={saveExerciseDefault}
+            onResetDefaults={resetExerciseDefault}
+          />
         ) : (
           <TemplateList
             templates={templates}
@@ -762,6 +796,14 @@ function WorkoutDetail({
               <p className="mt-1 text-sm text-muted-foreground">{exercise.notes}</p>
             ) : null}
             <div className="mt-3 space-y-2">
+              {exercise.warmup?.trim() ? (
+                <div className="flex items-start justify-between gap-3 text-sm">
+                  <span className="shrink-0 text-muted-foreground">Warm up</span>
+                  <span className="whitespace-pre-wrap break-words text-right font-medium">
+                    {exercise.warmup}
+                  </span>
+                </div>
+              ) : null}
               {exercise.sets.map((set, index) => (
                 <div key={set.id} className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Set {index + 1}</span>
@@ -895,7 +937,7 @@ function WorkoutEditor({
 }: {
   draft: StrengthWorkout;
   workouts: StrengthWorkout[];
-  library: ExerciseLibraryEntry[];
+  library: ExerciseLibraryEntryWithDefaults[];
   onChange: (draft: StrengthWorkout) => void;
   onClose: () => void;
   onContinue: () => void | Promise<void>;
@@ -1158,7 +1200,7 @@ function ExerciseEditor({
   exercise: StrengthExerciseEntry;
   index: number;
   workouts: StrengthWorkout[];
-  library: ExerciseLibraryEntry[];
+  library: ExerciseLibraryEntryWithDefaults[];
   currentWorkoutId: string;
   expanded: boolean;
   onToggleExpanded: () => void;
@@ -1180,7 +1222,7 @@ function ExerciseEditor({
     });
   }
 
-  function pickSuggestion(entry: ExerciseLibraryEntry) {
+  function pickSuggestion(entry: ExerciseLibraryEntryWithDefaults) {
     const setsAreEmpty = exercise.sets.every(
       (set) => set.weight === null && set.reps === null && set.rir == null && !set.completed
     );
@@ -1190,8 +1232,10 @@ function ExerciseEditor({
       name: entry.name,
       notes: exercise.notes?.trim() ? exercise.notes : entry.notes,
       sets: setsAreEmpty
-        ? Array.from({ length: Math.max(entry.sets.length, 1) }, () => ({
+        ? Array.from({ length: Math.max(entry.sets.length, 1) }, (_, setIndex) => ({
             ...createEmptySet(),
+            // Only user-edited defaults prefill weights; unedited exercises keep empty sets.
+            weight: entry.hasDefaults ? (entry.sets[setIndex]?.weight ?? null) : null,
             restSeconds
           }))
         : exercise.sets
@@ -1286,6 +1330,22 @@ function ExerciseEditor({
             ) : null}
 
             <div className="mt-4 space-y-2">
+              <label className="grid grid-cols-[40px_minmax(0,1fr)] gap-1.5 sm:grid-cols-[52px_minmax(0,1fr)] sm:gap-2">
+                <span className="grid h-11 place-items-center rounded-md bg-muted text-center text-xs leading-tight text-muted-foreground">
+                  Warm up
+                </span>
+                <input
+                  type="text"
+                  value={exercise.warmup ?? ""}
+                  maxLength={2000}
+                  aria-label={`Warm up for ${exercise.name || "exercise"}`}
+                  onChange={(event) => {
+                    onChange({ ...exercise, warmup: event.target.value });
+                  }}
+                  placeholder="e.g. bar ×10, 40kg ×5"
+                  className="h-11 w-full rounded-md border border-border bg-muted px-3 text-base outline-none placeholder:text-muted-foreground/60 focus:border-foreground sm:text-sm"
+                />
+              </label>
               <AnimatePresence initial={false}>
                 {exercise.sets.map((set, setIndex) => {
                   const ghost = previousSession?.sets[setIndex];

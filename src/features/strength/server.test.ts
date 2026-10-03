@@ -331,6 +331,94 @@ describe("deleteStrengthWorkout", () => {
   });
 });
 
+describe("exercise warmup note", () => {
+  const withWarmup = (warmup: string | undefined) =>
+    workout({
+      exercises: [
+        {
+          id: "e1",
+          name: "Bench Press",
+          ...(warmup === undefined ? {} : { warmup }),
+          sets: [{ id: "s1", weight: 60, reps: 8, completed: true }]
+        }
+      ]
+    });
+
+  const createdWarmup = () =>
+    (tx.sessionExercise.create.mock.calls[0]?.[0] as { data: { warmupNote: string | null } }).data
+      .warmupNote;
+
+  // Echo what was written back as the re-read row, so save -> read is exercised end to end.
+  beforeEach(() => {
+    tx.workoutSession.findUniqueOrThrow.mockImplementation(() => {
+      const { data } = tx.sessionExercise.create.mock.calls[0]?.[0] as {
+        data: { exerciseNameSnapshot: string; note: string | null; warmupNote: string | null };
+      };
+      return {
+        ...sessionRow(SessionStatus.COMPLETED),
+        exercises: [
+          {
+            id: "se1",
+            exerciseNameSnapshot: data.exerciseNameSnapshot,
+            note: data.note,
+            warmupNote: data.warmupNote,
+            restSeconds: null,
+            supersetGroupId: null,
+            orderIndex: 0,
+            sets: []
+          }
+        ]
+      };
+    });
+  });
+
+  it("trims a non-empty warmup on write and round-trips it on read", async () => {
+    const result = await saveStrengthWorkout(withWarmup("  2x10 empty bar \n"), "end");
+
+    expect(createdWarmup()).toBe("2x10 empty bar");
+    expect(result.workout?.exercises[0]?.warmup).toBe("2x10 empty bar");
+  });
+
+  it.each([["   "], [""], [undefined]])(
+    "stores %j as null and reads it back as an empty string",
+    async (warmup) => {
+      const result = await saveStrengthWorkout(withWarmup(warmup), "end");
+
+      expect(createdWarmup()).toBeNull();
+      expect(result.workout?.exercises[0]?.warmup).toBe("");
+    }
+  );
+
+  it("passes warmup through the action layer", async () => {
+    await saveStrengthWorkoutAction(withWarmup("ramp to 60"), "end");
+
+    expect(createdWarmup()).toBe("ramp to 60");
+  });
+
+  it("validation caps warmup at 2,000 characters", () => {
+    const parse = (warmup: unknown) =>
+      saveStrengthWorkoutInputSchema.safeParse({
+        workout: {
+          ...withWarmup(undefined),
+          exercises: [{ ...withWarmup("x").exercises[0], warmup }]
+        },
+        intent: "end"
+      }).success;
+
+    expect(parse("x".repeat(2_000))).toBe(true);
+    expect(parse("x".repeat(2_001))).toBe(false);
+    expect(parse(undefined)).toBe(true);
+    expect(parse(42)).toBe(false);
+  });
+
+  it("the action rejects an over-long warmup without touching the database", async () => {
+    const result = await saveStrengthWorkoutAction(withWarmup("x".repeat(2_001)), "end");
+
+    expect(result.status).toBe("error");
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
 describe("server actions (validation layer)", () => {
   it("rejects an unknown intent without calling the server layer", async () => {
     const result = await saveStrengthWorkoutAction(workout(), "abandon" as never);

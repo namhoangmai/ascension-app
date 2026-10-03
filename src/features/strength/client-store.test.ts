@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   ExerciseLibraryEntry,
@@ -8,11 +8,19 @@ import type {
 } from "@/types/strength";
 
 import {
+  applyExerciseDefaults,
   buildExerciseLibrary,
+  type ExerciseDefault,
   fillSetFromPrevious,
   getPreviousExerciseSession,
+  isExerciseDefault,
+  isStrengthWorkout,
+  loadExerciseDefaults,
+  normalizeExerciseName,
   parseDecimalInput,
-  rankExerciseSuggestions
+  rankExerciseSuggestions,
+  saveExerciseDefaults,
+  STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY
 } from "./client-store";
 
 function makeSet(overrides: Partial<StrengthSet> = {}): StrengthSet {
@@ -328,5 +336,248 @@ describe("getPreviousExerciseSession", () => {
 
   it("returns undefined when the exercise has no history", () => {
     expect(getPreviousExerciseSession(workouts, "Deadlift", "draft")).toBeUndefined();
+  });
+});
+
+const validDefault: ExerciseDefault = {
+  notes: "pause reps",
+  weights: [60, null, 70.5],
+  updatedAt: 1
+};
+
+describe("isExerciseDefault", () => {
+  it("accepts a valid default (including empty weights)", () => {
+    expect(isExerciseDefault(validDefault)).toBe(true);
+    expect(isExerciseDefault({ notes: "", weights: [], updatedAt: 0 })).toBe(true);
+  });
+
+  it.each([
+    ["null", null],
+    ["a string", "x"],
+    ["missing notes", { weights: [], updatedAt: 1 }],
+    ["non-string notes", { notes: 1, weights: [], updatedAt: 1 }],
+    ["missing updatedAt", { notes: "", weights: [] }],
+    ["string updatedAt", { notes: "", weights: [], updatedAt: "1" }],
+    ["missing weights", { notes: "", updatedAt: 1 }],
+    ["non-array weights", { notes: "", weights: { 0: 1 }, updatedAt: 1 }],
+    ["string weight", { notes: "", weights: ["60"], updatedAt: 1 }],
+    ["NaN weight", { notes: "", weights: [Number.NaN], updatedAt: 1 }],
+    ["Infinity weight", { notes: "", weights: [Number.POSITIVE_INFINITY], updatedAt: 1 }],
+    ["undefined weight", { notes: "", weights: [undefined], updatedAt: 1 }]
+  ])("rejects %s", (_label, value) => {
+    expect(isExerciseDefault(value)).toBe(false);
+  });
+});
+
+describe("loadExerciseDefaults / saveExerciseDefaults", () => {
+  let store: Map<string, string>;
+
+  beforeEach(() => {
+    store = new Map();
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value)
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("round-trips through localStorage under the v1 key", () => {
+    const defaults = {
+      "bench press": validDefault,
+      squat: { notes: "", weights: [], updatedAt: 2 }
+    };
+
+    saveExerciseDefaults(defaults);
+
+    expect(store.has(STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY)).toBe(true);
+    expect(loadExerciseDefaults()).toEqual(defaults);
+  });
+
+  it("returns {} when nothing is stored", () => {
+    expect(loadExerciseDefaults()).toEqual({});
+  });
+
+  it("returns {} for malformed JSON", () => {
+    store.set(STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY, "{not json");
+
+    expect(loadExerciseDefaults()).toEqual({});
+  });
+
+  it.each(["[]", "null", "42", '"str"'])("returns {} for non-object JSON %s", (raw) => {
+    store.set(STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY, raw);
+
+    expect(loadExerciseDefaults()).toEqual({});
+  });
+
+  it("drops invalid entries and keeps valid ones", () => {
+    store.set(
+      STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY,
+      JSON.stringify({
+        good: validDefault,
+        bad: { notes: "x", weights: ["heavy"], updatedAt: 1 },
+        worse: null
+      })
+    );
+
+    expect(loadExerciseDefaults()).toEqual({ good: validDefault });
+  });
+
+  it("returns {} and does not write without window (SSR)", () => {
+    vi.stubGlobal("window", undefined);
+    store.set(STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY, JSON.stringify({ good: validDefault }));
+
+    expect(loadExerciseDefaults()).toEqual({});
+    saveExerciseDefaults({});
+    expect(store.get(STRENGTH_EXERCISE_DEFAULTS_STORAGE_KEY)).toContain("good");
+  });
+
+  it('round-trips a "__proto__" default as an own key and applies it (regression)', () => {
+    const name = "__proto__";
+    // Built the way the save handler builds it.
+    const defaults = { ...{}, [normalizeExerciseName(name)]: validDefault };
+
+    saveExerciseDefaults(defaults);
+    const loaded = loadExerciseDefaults();
+
+    expect(Object.hasOwn(loaded, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(loaded)).toBe(Object.prototype);
+    expect(applyExerciseDefaults([makeEntry(name)], loaded)[0]).toMatchObject({
+      name,
+      notes: validDefault.notes,
+      hasDefaults: true
+    });
+  });
+});
+
+describe("applyExerciseDefaults", () => {
+  const set = (weight: number | null, reps: number | null = 5, rir: number | null = 2) => ({
+    weight,
+    reps,
+    rir
+  });
+  const entry = (name: string, overrides: Partial<ExerciseLibraryEntry> = {}) => ({
+    ...makeEntry(name),
+    notes: "history notes",
+    sets: [set(50), set(55), set(60)],
+    ...overrides
+  });
+  const withDefault = (weights: (number | null)[], notes = "my notes") => ({
+    "bench press": { notes, weights, updatedAt: 1 }
+  });
+
+  it("returns entries unchanged with hasDefaults: false when there is no default", () => {
+    const library = [entry("Bench Press")];
+
+    expect(applyExerciseDefaults(library, {})).toEqual([{ ...library[0], hasDefaults: false }]);
+  });
+
+  it("overrides notes and per-index weights, keeping reps/rir", () => {
+    const [result] = applyExerciseDefaults([entry("Bench Press")], withDefault([70, 72.5, 75]));
+
+    expect(result).toMatchObject({
+      notes: "my notes",
+      hasDefaults: true,
+      sets: [set(70), set(72.5), set(75)]
+    });
+  });
+
+  it("overrides with an empty notes string", () => {
+    const [result] = applyExerciseDefaults([entry("Bench Press")], withDefault([], ""));
+
+    expect(result?.notes).toBe("");
+  });
+
+  it("a null weight clears the history weight", () => {
+    const [result] = applyExerciseDefaults([entry("Bench Press")], withDefault([null, 80]));
+
+    expect(result?.sets).toEqual([set(null), set(80), set(60)]);
+  });
+
+  it("leaves sets beyond a shorter weights array untouched", () => {
+    const [result] = applyExerciseDefaults([entry("Bench Press")], withDefault([100]));
+
+    expect(result?.sets).toEqual([set(100), set(55), set(60)]);
+  });
+
+  it("appends sets for extra weights with null reps/rir", () => {
+    const [result] = applyExerciseDefaults(
+      [entry("Bench Press", { sets: [set(50)] })],
+      withDefault([60, 65, null])
+    );
+
+    expect(result?.sets).toEqual([set(60), set(65, null, null), set(null, null, null)]);
+  });
+
+  it("looks up defaults by normalized name (case and surrounding whitespace)", () => {
+    const [result] = applyExerciseDefaults([entry("  BENCH press ")], withDefault([1]));
+
+    expect(result?.hasDefaults).toBe(true);
+    expect(result?.sets[0]?.weight).toBe(1);
+  });
+
+  it("only applies to the matching entry and does not mutate the input", () => {
+    const library = [entry("Bench Press"), entry("Squat")];
+    const snapshot = structuredClone(library);
+
+    const result = applyExerciseDefaults(library, withDefault([99]));
+
+    expect(result.map((item) => item.hasDefaults)).toEqual([true, false]);
+    expect(result[1]).toEqual({ ...library[1], hasDefaults: false });
+    expect(library).toEqual(snapshot);
+  });
+
+  // Regression: a plain `defaults[key]` lookup hit Object.prototype for these names and crashed.
+  it.each(["Constructor", "__proto__", "toString"])(
+    "treats %j as having no default when defaults is {}",
+    (name) => {
+      const library = [entry(name)];
+
+      expect(applyExerciseDefaults(library, {})).toEqual([{ ...library[0], hasDefaults: false }]);
+    }
+  );
+});
+
+describe("rankExerciseSuggestions with defaults", () => {
+  it("preserves hasDefaults on results", () => {
+    const library = applyExerciseDefaults([makeEntry("Bench Press"), makeEntry("Bent Row")], {
+      "bench press": validDefault
+    });
+
+    const result = rankExerciseSuggestions("ben", library);
+
+    expect(result.map(({ name, hasDefaults }) => ({ name, hasDefaults }))).toEqual([
+      { name: "Bench Press", hasDefaults: true },
+      { name: "Bent Row", hasDefaults: false }
+    ]);
+    expect(result[0]).toBe(library[0]);
+  });
+});
+
+describe("isStrengthWorkout warmup", () => {
+  const base = { id: "w", date: "2026-07-01", startTime: "10:00" };
+
+  it("accepts exercises with and without warmup", () => {
+    expect(isStrengthWorkout({ ...base, exercises: [makeExercise("A")] })).toBe(true);
+    expect(
+      isStrengthWorkout({ ...base, exercises: [makeExercise("A", { warmup: "2x10 empty bar" })] })
+    ).toBe(true);
+    expect(isStrengthWorkout({ ...base, exercises: [makeExercise("A", { warmup: "" })] })).toBe(
+      true
+    );
+    expect(isStrengthWorkout({ ...base, exercises: [] })).toBe(true);
+  });
+
+  it.each([42, null, ["x"], { text: "x" }])("rejects non-string warmup %j", (warmup) => {
+    expect(isStrengthWorkout({ ...base, exercises: [{ ...makeExercise("A"), warmup }] })).toBe(
+      false
+    );
+  });
+
+  it.each([null, "Bench", 1])("rejects a non-object exercise %j", (exercise) => {
+    expect(isStrengthWorkout({ ...base, exercises: [makeExercise("A"), exercise] })).toBe(false);
   });
 });
